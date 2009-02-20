@@ -27,8 +27,10 @@
 
 using namespace TA3D; // TODO Remove this
 
+# include "gfx.toolkit.h"
 # include "font.h"
 # include "texture.h"
+# include "shader.h"
 # include "../threads/thread.h"
 # include "../misc/interface.h"
 
@@ -44,14 +46,17 @@ using namespace TA3D; // TODO Remove this
 namespace TA3D
 {
 
-    class GfxFont;
+    class Font;
 
 
     class GFX : public ObjectSync, protected IInterface
     {
-        friend class GfxFont;
+        friend class Font;
 
         bool		alpha_blending_set;
+        GLuint      texture_format;
+        bool        build_mipmaps;
+        bool        shadowMapMode;
 
     public:
         //! \name 2D/3D Mode
@@ -62,6 +67,11 @@ namespace TA3D
         static void unset_2D_mode();
         //@}
 
+        //! Set current texture format
+        void set_texture_format(GLuint gl_format);
+
+        //! Set current texture format
+        void use_mipmapping(bool use);
 
         /*!
         ** \brief Draw a texture inside a quad surface
@@ -79,18 +89,19 @@ namespace TA3D
         **
         ** \param file The texture file
         ** \param filealpha The mask
-        ** \return A valid BITMAP
+        ** \return A valid SDL_Surface
         */
-        static BITMAP* LoadMaskedTextureToBmp(const String& file, const String& filealpha);
+        static SDL_Surface* LoadMaskedTextureToBmp(const String& file, const String& filealpha);
 
     public:
         int			width;				// Size of this window on the screen
         int			height;
         int			x,y;				// Position on the screen
-        GfxFont     normal_font;		// Fonts
-        GfxFont     small_font;
-        GfxFont     TA_font;
-        GfxFont     ta3d_gui_font;
+        Font        *normal_font;		// Fonts
+        Font        *small_font;
+        Font        *TA_font;
+        Font        *ta3d_gui_font;
+        Font        *big_font;
 
         sint32		SCREEN_W_HALF;
         sint32		SCREEN_H_HALF;
@@ -104,8 +115,18 @@ namespace TA3D
         GLuint		glfond;
         GLuint      textureFBO;         // FBO used by renderToTexture functions
         GLuint      textureDepth;
+        GLuint      textureColor;       // Default color texture used by FBO when rendering to depth texture
+        GLuint      shadowMap;
+
+        GLfloat     shadowMapProjectionMatrix[16];
+
+        Shader      model_shader;
 
         bool		ati_workaround;		// Need to use workarounds for ATI cards ?
+
+        int         max_tex_size;
+        //! A default texture, loaded at initialization, used for rendering non textured objects with some shaders
+        GLuint      default_texture;
 
         GFX();
 
@@ -122,7 +143,7 @@ namespace TA3D
         uint32 InterfaceMsg( const lpcImsg msg );
 
         void preCalculations();
-        void initAllegroGL();
+        void initSDL();
         bool checkVideoCardWorkaround() const;
         void displayInfosAboutOpenGL() const;
 
@@ -137,7 +158,7 @@ namespace TA3D
         { glColor4f(r,g,b,a); }
 
         void set_color(const uint32 col) const
-        { glColor4ub(col & 0xFF, (col & 0xFF00) >> 8, (col & 0xFF0000) >> 16, (col & 0xFF000000) >> 24); }
+        { glColor4ub( getr(col), getg(col), getb(col), geta(col)); }
 
         void set_alpha(const float a) const;
 
@@ -145,37 +166,45 @@ namespace TA3D
         ** \brief
         */
         float get_r(const uint32 col) const
-        { return ( col & 0xFF)*BYTE_TO_FLOAT; }
+        { return getr(col) * BYTE_TO_FLOAT; }
         /*!
         **
         */
         float get_g(const uint32 col) const
-        { return ((col & 0xFF00) >> 8) * BYTE_TO_FLOAT; }
+        { return getg(col) * BYTE_TO_FLOAT; }
         /*!
         **
         */
         float get_b(const uint32 col) const
-        { return ((col & 0xFF0000) >> 16) * BYTE_TO_FLOAT; }
+        { return getb(col) * BYTE_TO_FLOAT; }
         /*!
         **
         */
         float get_a(const uint32 col) const
-        { return ((col & 0xFF000000) >> 24) * BYTE_TO_FLOAT; }
+        { return geta(col) * BYTE_TO_FLOAT; }
 
 
         /*!
         **
         */
         uint32 makeintcol(float r, float g, float b) const
-        { return (int)(255.0f * r) | ((int)(255.0f * g) << 8) | ((int)(255.0f * b) << 16) | 0xFF000000; }
+        { return (uint32)(255.0f * r) | ((uint32)(255.0f * g) << 8) | ((uint32)(255.0f * b) << 16) | 0xFF000000; }
         /*!
         **
         */
         uint32 makeintcol(float r, float g, float b, float a) const
-        { return (int)(255.0f * r) | ((int)(255.0f * g) << 8) | ((int)(255.0f * b) << 16) | ((int)(255.0f * a) << 24); }
+        { return (uint32)(255.0f * r) | ((uint32)(255.0f * g) << 8) | ((uint32)(255.0f * b) << 16) | ((uint32)(255.0f * a) << 24); }
 
         //@} // Color management
 
+        /*!
+        ** \brief enable/disable the 3DO model vertex/fragment program (the one that fits the current rendering mode, or none if not required)
+        */
+        void enable_model_shading(int mode = 0);
+        void disable_model_shading();
+
+        void setShadowMapMode(bool mode);
+        bool getShadowMapMode();
 
         void line(const float x1, const float y1, const float x2, const float y2);			// Basic drawing routines
         void rect(const float x1, const float y1, const float x2, const float y2);
@@ -204,48 +233,21 @@ namespace TA3D
         //! \name Text manipulation
         //@{
 
-        void print(const GfxFont &font, const float x, const float y, const float z, const String text );		// Font related routines
-        void print(const GfxFont &font, const float x, const float y, const float z, const uint32 col, const String text );
+        void print(Font *font, const float x, const float y, const float z, const String &text );		// Font related routines
+        void print(Font *font, const float x, const float y, const float z, const uint32 col, const String &text );
 
-        void print(const GfxFont &font, const float x, const float y, const float z, const char *text );
-        void print(const GfxFont &font, const float x, const float y, const float z, const uint32 col, const char *text );
+        void print_center(Font *font, const float x, const float y, const float z, const String &text );		// Font related routines
+        void print_center(Font *font, const float x, const float y, const float z, const uint32 col, const String &text );
 
-        void print(const GfxFont &font, const float x, const float y, const float z, const String text, float s);		// Font related routines
-        void print(const GfxFont &font, const float x, const float y, const float z, const uint32 col, const String text, float s);
-
-        void print(const GfxFont &font, const float x, const float y, const float z, const char *text, float s);
-        void print(const GfxFont &font, const float x, const float y, const float z, const uint32 col, const char *text, float s);
-
-        void print_center(const GfxFont &font, const float x, const float y, const float z, const String text );		// Font related routines
-        void print_center(const GfxFont &font, const float x, const float y, const float z, const uint32 col, const String text );
-
-        void print_center(const GfxFont &font, const float x, const float y, const float z, const char *text );
-        void print_center(const GfxFont &font, const float x, const float y, const float z, const uint32 col, const char *text );
-
-        void print_center(const GfxFont &font, const float x, const float y, const float z, const String text, float s);		// Font related routines
-        void print_center(const GfxFont &font, const float x, const float y, const float z, const uint32 col, const String text, float s);
-
-        void print_center(const GfxFont &font, const float x, const float y, const float z, const char *text, float s);
-        void print_center(const GfxFont &font, const float x, const float y, const float z, const uint32 col, const char *text, float s);
-
-        void print_right(const GfxFont &font, const float x, const float y, const float z, const String text );		// Font related routines
-        void print_right(const GfxFont &font, const float x, const float y, const float z, const uint32 col, const String text );
-
-        void print_right(const GfxFont &font, const float x, const float y, const float z, const char *text );
-        void print_right(const GfxFont &font, const float x, const float y, const float z, const uint32 col, const char *text );
-
-        void print_right(const GfxFont &font, const float x, const float y, const float z, const String text, float s);		// Font related routines
-        void print_right(const GfxFont &font, const float x, const float y, const float z, const uint32 col, const String text, float s);
-
-        void print_right(const GfxFont &font, const float x, const float y, const float z, const char *text, float s);
-        void print_right(const GfxFont &font, const float x, const float y, const float z, const uint32 col, const char *text, float s);
+        void print_right(Font *font, const float x, const float y, const float z, const String &text );		// Font related routines
+        void print_right(Font *font, const float x, const float y, const float z, const uint32 col, const String &text );
 
         //@} // Text manipilation
 
 
-        GLuint	make_texture( BITMAP *bmp, byte filter_type = FILTER_TRILINEAR, bool clamp = true );
+        GLuint	make_texture( SDL_Surface *bmp, byte filter_type = FILTER_TRILINEAR, bool clamp = true );
         GLuint	create_texture( int w, int h, byte filter_type = FILTER_TRILINEAR, bool clamp = true );
-        void	blit_texture( BITMAP *src, GLuint dst );
+        void	blit_texture( SDL_Surface *src, GLuint dst );
         GLuint	load_texture( String file, byte filter_type = FILTER_TRILINEAR, uint32 *width = NULL, uint32 *height = NULL, bool clamp = true, GLuint texFormat = 0 );
         GLuint	load_texture_mask( String file, int level, byte filter_type = FILTER_TRILINEAR, uint32 *width = NULL, uint32 *height = NULL, bool clamp = true );
         GLuint	load_texture_from_cache( String file, byte filter_type = FILTER_TRILINEAR, uint32 *width = NULL, uint32 *height = NULL, bool clamp = true );
@@ -270,10 +272,14 @@ namespace TA3D
         GLuint	create_texture_RGBA32F( int w, int h, byte filter_type = FILTER_NONE, bool clamp = true );
         GLuint	create_texture_RGB16F( int w, int h, byte filter_type = FILTER_NONE, bool clamp = true );
         GLuint	create_texture_RGBA16F( int w, int h, byte filter_type = FILTER_NONE, bool clamp = true );
+        GLuint  create_shadow_map(int w, int h);
 
         GLuint make_texture_from_screen(byte filter_type = FILTER_NONE);
 
-        BITMAP *load_image(const String filename);
+        GLuint get_shadow_map();
+        void readShadowMapProjectionMatrix();
+
+        SDL_Surface *load_image(const String filename);
 
         void set_alpha_blending();
         void unset_alpha_blending();
@@ -291,19 +297,25 @@ namespace TA3D
         void clearDepth();
 
         /*!
-        ** \brief Flip the backbuffer to the Allegro screen and clear it
+        ** \brief Flip the backbuffer to the screen
         */
-        void flip() const { allegro_gl_flip(); }
+        void flip() const { SDL_GL_SwapBuffers(); }
 
         /*!
         ** \brief set a texture as render target, goes back to normal when passing 0 (do not forget to detach the texture when you're done!)
         */
         void renderToTexture( const GLuint tex = 0, bool useDepth = false );
+        void renderToTextureDepth( const GLuint tex = 0 );
 
         /*!
         ** \brief runs several tests on GFX hardware capabilities, should be used only when calling ta3d with --test
         */
         static void runTests();
+        static void runOpenGLTests();
+
+        SDL_Surface *create_surface_ex(int bpp, int w, int h);
+        SDL_Surface *create_surface(int w, int h);
+
 
     }; // class GFX
 

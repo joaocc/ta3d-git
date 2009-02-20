@@ -1,6 +1,6 @@
-
-#include "object.h"
+#include "../../stdafx.h"
 #include "../gfx.h"
+#include "object.h"
 #include "../../TA3D_NameSpace.h"
 #include "../../gui.h"
 #include "../../misc/math.h"
@@ -84,13 +84,25 @@ namespace TA3D
         switch (Type)
         {
             case OBJ_OPTIONC:
-            case OBJ_OPTIONB: x2 = x1 + (int)gui_font.length(caption) + 4;
+            case OBJ_OPTIONB: x2 = x1 + (int)gui_font->length(caption) + 4;
             case OBJ_TEXT:
             case OBJ_MENU:
             case OBJ_FMENU:
             case OBJ_TEXTBAR:
-            case OBJ_BUTTON:  Text[0] = caption;
-        }
+            case OBJ_BUTTON:
+                if (Flag & FLAG_CENTERED)
+                {
+                    x1 += (gui_font->length(Text[0]) - gui_font->length(caption)) * 0.5f;
+                    x2 -= (gui_font->length(Text[0]) - gui_font->length(caption)) * 0.5f;
+                }
+                Text[0] = caption;
+        };
+        switch (Type)
+        {
+            case OBJ_OPTIONC:
+            case OBJ_OPTIONB:
+                x2 = x1 + (int)gui_font->length(caption) + 4;
+        };
         if (Type == OBJ_TEXTBAR && Text[0].size() >= Data)
             Text[0].resize(Data - 1);
     }
@@ -153,7 +165,7 @@ namespace TA3D
         x1 = X1;
         y1 = Y1;
 
-        x2 = X1 +(int)(gui_font.length(caption) * size) + 4;
+        x2 = X1 +(int)(gui_font->length(caption)) + 4;
         y2 = Y1;
 
         if (skin && skin->checkbox[0].tex && skin->checkbox[1].tex)
@@ -166,7 +178,7 @@ namespace TA3D
             x2 += 8;
             y2 += 12;
         }
-        Etat = ETAT;	
+        Etat = ETAT;
         Focus = false;
         Text.resize(1);
         Text[0] = caption;
@@ -184,9 +196,9 @@ namespace TA3D
         x1 = X1;
         y1 = Y1;
 
-        x2 = X1 + (int)(gui_font.length(Caption) * size) + 4;
+        x2 = X1 + (int)(gui_font->length(Caption)) + 4;
         y2 = Y1;
-        
+
         if (skin && skin->option[0].tex && skin->option[1].tex)
         {
             x2 += Math::Max(skin->option[0].sw, skin->option[1].sw);
@@ -197,7 +209,7 @@ namespace TA3D
             x2 += 8;
             y2 += 12;
         }
-        Etat = ETAT;	
+        Etat = ETAT;
         Focus = false;
         Text.resize(1);
         Text[0] = Caption;
@@ -214,7 +226,7 @@ namespace TA3D
         y1 = Y1;
         x2 = X2;
         y2 = Y2;
-        Etat  = false;	
+        Etat  = false;
         Focus = false;
         Text.resize(1);
         Text[0].clear();
@@ -243,7 +255,7 @@ namespace TA3D
         y1 = Y1;
         x2 = X2;
         y2 = Y2;
-        Etat  = false;	
+        Etat  = false;
         Focus = false;
         Text.resize(1);
         Text[0] = Caption;
@@ -263,8 +275,8 @@ namespace TA3D
         x1 = X1;
         y1 = Y1;
         x2 = X1 + 168;
-        y2 = (int)(Y1 + gui_font_h * size * Entry.size() + gui_font_h * size);
-        Etat = false;	
+        y2 = (int)(Y1 + gui_font->height() * Entry.size() + gui_font->height());
+        Etat = false;
         Focus = false;
         Text = Entry;
         if (Text.empty())
@@ -284,7 +296,7 @@ namespace TA3D
         y1 = Y1;
         x2 = X2;
         y2 = Y2;
-        Etat = false;	
+        Etat = false;
         Focus = false;
         Text = Entry;
         if (Text.empty())
@@ -306,7 +318,7 @@ namespace TA3D
         y1 = Y1;
         x2 = X2;
         y2 = Y2;
-        Etat = false;	
+        Etat = false;
         Focus = false;
         Text.clear();
         Func = NULL;
@@ -323,9 +335,9 @@ namespace TA3D
         Type = OBJ_TEXT;
         x1 = X1;
         y1 = Y1;
-        x2 = (int)(X1 + Caption.length() * 8 * size);
-        y2 = (int)(Y1 + gui_font_h * size);
-        Etat = false;	
+        x2 = (int)(X1 + gui_font->length(Caption));
+        y2 = (int)(Y1 + gui_font->height());
+        Etat = false;
         Focus = false;
         Text.resize(1);
         Text[0] = Caption;
@@ -342,7 +354,7 @@ namespace TA3D
         y1 = Y1;
         x2 = X2;
         y2 = Y2;
-        Etat = false;	
+        Etat = false;
         Focus = false;
         Text.clear();
         Func = NULL;
@@ -356,7 +368,7 @@ namespace TA3D
         y1 = Y1;
         x2 = X2;
         y2 = Y2;
-        Etat = false;	
+        Etat = false;
         Focus = false;
         Text.clear();
         Func = NULL;
@@ -373,7 +385,7 @@ namespace TA3D
         y1 = Y1;
         x2 = X2;
         y2 = Y2;
-        Etat = false;	
+        Etat = false;
         Focus = false;
         Text.clear();
         Func = NULL;
@@ -389,7 +401,7 @@ namespace TA3D
         y1 = Y1;
         x2 = X2;
         y2 = Y2;
-        Etat = false;	
+        Etat = false;
         Focus = false;
         Text = Entry;
         Func = NULL;

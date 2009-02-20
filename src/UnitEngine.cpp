@@ -23,6 +23,7 @@
   \----------------------------------------------------------*/
 
 #include "stdafx.h"
+#include "misc/math.h"
 #include "misc/matrix.h"
 #include "TA3D_NameSpace.h"
 #include "ta3dbase.h"
@@ -36,7 +37,6 @@
 #include "misc/camera.h"
 #include "ingame/sidedata.h"
 #include "languages/i18n.h"
-#include "misc/math.h"
 #include "sounds/manager.h"
 #include "ingame/players.h"
 
@@ -593,8 +593,8 @@ namespace TA3D
         int px = cur_px>>1;
         int py = cur_py>>1;
         if (px >= 0 && py >= 0 && px < units.map->radar_map->w && py < units.map->radar_map->h && type_id != -1)
-            return ( (units.map->radar_map->line[py][px] & p_mask) && !unit_manager.unit_type[type_id]->Stealth && (unit_manager.unit_type[type_id]->fastCategory & CATEGORY_NOTSUB) )
-                || ( (units.map->sonar_map->line[py][px] & p_mask) && !(unit_manager.unit_type[type_id]->fastCategory & CATEGORY_NOTSUB) );
+            return ( (SurfaceByte(units.map->radar_map,px,py) & p_mask) && !unit_manager.unit_type[type_id]->Stealth && (unit_manager.unit_type[type_id]->fastCategory & CATEGORY_NOTSUB) )
+                || ( (SurfaceByte(units.map->sonar_map,px,py) & p_mask) && !(unit_manager.unit_type[type_id]->fastCategory & CATEGORY_NOTSUB) );
         return false;
     }
 
@@ -1073,7 +1073,7 @@ namespace TA3D
     }
 
 
-    void UNIT::draw(float t, Camera& cam, MAP* map, bool height_line)
+    void UNIT::draw(float t, MAP* map, bool height_line)
     {
         visibility_checked = false;
 
@@ -1099,25 +1099,25 @@ namespace TA3D
         byte player_mask = 1 << players.local_human_id;
 
         on_radar = on_mini_radar = is_on_radar( player_mask );
-        if (map->view[py][px] == 0 || ( map->view[py][px] > 1 && !on_radar ) || ( !on_radar && !(map->sight_map->line[py][px] & player_mask) ) )
+        if (map->view[py][px] == 0 || ( map->view[py][px] > 1 && !on_radar ) || ( !on_radar && !(SurfaceByte(map->sight_map,px,py) & player_mask) ) )
             return;	// Unit is not visible
 
         bool radar_detected = on_radar;
 
         on_radar &= map->view[py][px] > 1;
 
-        Vector3D D (Pos - cam.pos); // Vecteur "viseur unité" partant de la caméra vers l'unité
+        Vector3D D (Pos - Camera::inGame->pos); // Vecteur "viseur unité" partant de la caméra vers l'unité
 
         float dist=D.sq();
-        if (dist >= 16384.0f && (D % cam.dir) <= 0.0f)
+        if (dist >= 16384.0f && (D % Camera::inGame->dir) <= 0.0f)
             return;
-        if ((D % cam.dir) > cam.zfar2)
+        if ((D % Camera::inGame->dir) > Camera::inGame->zfar2)
             return;		// Si l'objet est hors champ on ne le dessine pas
 
         if (!cloaked || owner_id == players.local_human_id) // Don't show cloaked units
         {
             visible = true;
-            on_radar |= cam.rpos.y > gfx->low_def_limit;
+            on_radar |= Camera::inGame->rpos.y > gfx->low_def_limit;
         }
         else
         {
@@ -1133,7 +1133,7 @@ namespace TA3D
             glTranslatef( Pos.x, Math::Max(Pos.y,map->sealvl+5.0f), Pos.z);
             glEnable(GL_TEXTURE_2D);
             int unit_nature = ICON_UNKNOWN;
-            float size = (D % cam.dir) * 12.0f / gfx->height;
+            float size = (D % Camera::inGame->dir) * 12.0f / gfx->height;
 
             if (unit_manager.unit_type[type_id]->fastCategory & CATEGORY_KAMIKAZE )
                 unit_nature = ICON_KAMIKAZE;
@@ -1372,6 +1372,8 @@ namespace TA3D
                     }
                 }
 
+                bool old_mode = gfx->getShadowMapMode();
+
                 if (build_percent_left == 0.0f)
                 {
                     if (cloaked || ( cloaking && owner_id != players.local_human_id ) )
@@ -1397,6 +1399,7 @@ namespace TA3D
                 }
                 else
                 {
+                    gfx->setShadowMapMode(true);
                     if (build_percent_left<=33.0f)
                     {
                         float h = model->top - model->bottom;
@@ -1445,6 +1448,7 @@ namespace TA3D
 
                 if (lp_CONFIG->underwater_bright && map->water && Pos.y < map->sealvl)
                 {
+                    gfx->setShadowMapMode(true);
                     glEnable(GL_CLIP_PLANE2);
 
                     glEnable( GL_BLEND );
@@ -1458,6 +1462,7 @@ namespace TA3D
 
                     glDisable(GL_CLIP_PLANE2);
                 }
+                gfx->setShadowMapMode(old_mode);
 
                 if (unit_target)
                 {
@@ -5010,7 +5015,7 @@ namespace TA3D
                                         if (isEnemy( cur_idx ) && units.unit[cur_idx].flags
                                              && unit_manager.unit_type[units.unit[cur_idx].type_id]->ShootMe
                                              && ( units.unit[cur_idx].is_on_radar( mask ) ||
-                                                  ( (units.map->sight_map->line[y>>1][x>>1] & mask)
+                                                  ( (SurfaceByte(units.map->sight_map,x>>1,y>>1) & mask)
                                                     && !units.unit[cur_idx].cloaked ) )
                                              && !unit_manager.unit_type[ units.unit[cur_idx].type_id ]->checkCategory( unit_manager.unit_type[type_id]->NoChaseCategory ) )
 //                                             && !unit_manager.unit_type[ units.unit[cur_idx].type_id ]->checkCategory( unit_manager.unit_type[type_id]->BadTargetCategory ) )
@@ -5730,7 +5735,6 @@ script_exec:
     INGAME_UNITS::INGAME_UNITS()
         :repair_pads(), requests()
     {
-        InitThread();
         init();
     }
 
@@ -6162,7 +6166,7 @@ script_exec:
                     pMutex.lock();
                     continue;	// Out of the map
                 }
-                if (!( map->view_map->line[ py ][ px ] & player_mask ) && !(map->sight_map->line[ py ][ px ] & player_mask)
+                if (!( SurfaceByte(map->view_map,px,py) & player_mask ) && !(SurfaceByte(map->sight_map,px,py) & player_mask)
                     && !unit[i].is_on_radar( player_mask ) )
                 {
                     unit[ i ].unlock();
@@ -6603,17 +6607,17 @@ script_exec:
         pMutex.lock();
 
         bool pointed_only = false;
-        if (last_on >= 0 && ( last_on >= max_unit || unit[ last_on ].flags == 0 ) ) 	last_on = -1;
-        if (index<0 || index>=max_unit || unit[index].flags==0 || unit[index].type_id < 0 ) {
+        if (last_on >= 0 && ( last_on >= max_unit || unit[ last_on ].flags == 0 )) 	last_on = -1;
+        if (index<0 || index>=max_unit || unit[index].flags==0 || unit[index].type_id < 0)
+        {
             if (last_on >= 0 )
                 pointed_only = true;
-            else {
+            else
+            {
                 pMutex.unlock();
                 return;		// On n'affiche que des données sur les unités EXISTANTES
             }
         }
-
-        set_uformat(U_ASCII);
 
         UNIT *target = pointed_only ? NULL : (unit[index].mission!=NULL ? (UNIT*) unit[index].mission->p : NULL);
         if (target && target->flags==0)
@@ -6622,7 +6626,7 @@ script_exec:
         glEnable(GL_TEXTURE_2D);
         glEnable(GL_BLEND);
 
-        if (!pointed_only && !hide_bpic )
+        if (!pointed_only && !hide_bpic)
         {
             int stock=0;
             for(int i = 0 ; i < unit_manager.unit_type[unit[index].type_id]->weapon.size() ; i++)
@@ -6635,7 +6639,7 @@ script_exec:
             if ((unit_manager.unit_type[unit[index].type_id]->Builder && !unit_manager.unit_type[unit[index].type_id]->BMcode)
                 || unit[index].planned_weapons>0.0f || stock>0) // Affiche la liste de construction
             {
-                int page=unit_manager.unit_type[unit[index].type_id]->page;
+                int page = unit_manager.unit_type[unit[index].type_id]->page;
 
                 glBlendFunc(GL_ONE,GL_ONE_MINUS_SRC_COLOR);
                 for( int i = 0 ; i < unit_manager.unit_type[unit[index].type_id]->nb_unit ; i++ ) // Affiche les différentes images d'unités constructibles
@@ -6657,22 +6661,23 @@ script_exec:
                     }
                     if (nb>0)
                     {
-                        char buf[10];
-                        uszprintf(buf,10,"%d",nb);
+                        String buf = format("%d",nb);
                         glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-                        gfx->print(gfx->TA_font,px+pw*0.5f-0.5f*gfx->TA_font.length(buf),py+ph*0.5f-0.5f*gfx->TA_font.height(),0.0f,0xFFFFFFFF,buf);
+                        gfx->print(gfx->TA_font,px+1+pw*0.5f-0.5f*gfx->TA_font->length(buf),py+1+ph*0.5f-0.5f*gfx->TA_font->height(),0.0f,Black,buf);
+                        gfx->print(gfx->TA_font,px+pw*0.5f-0.5f*gfx->TA_font->length(buf),py+ph*0.5f-0.5f*gfx->TA_font->height(),0.0f,0xFFFFFFFF,buf);
                     }
                     else
                     {
                         if (unit_manager.unit_type[unit[index].type_id]->BuildList[i] == -1) // Il s'agit d'une arme / It's a weapon
                         {
-                            char buf[10];
+                            String buf;
                             if ((int)unit[index].planned_weapons==unit[index].planned_weapons)
-                                uszprintf(buf,10,"%d(%d)",(int)unit[index].planned_weapons,stock);
+                                buf = format("%d(%d)",(int)unit[index].planned_weapons,stock);
                             else
-                                uszprintf(buf,10,"%d(%d)",(int)unit[index].planned_weapons+1,stock);
+                                buf = format("%d(%d)",(int)unit[index].planned_weapons+1,stock);
                             glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-                            gfx->print(gfx->TA_font,px+pw*0.5f-0.5f*gfx->TA_font.length(buf),py+ph*0.5f-0.5f*gfx->TA_font.height(),0.0f,0xFFFFFFFF,buf);
+                            gfx->print(gfx->TA_font,px+1+pw*0.5f-0.5f*gfx->TA_font->length(buf),py+1+ph*0.5f-0.5f*gfx->TA_font->height(),0.0f,Black,buf);
+                            gfx->print(gfx->TA_font,px+pw*0.5f-0.5f*gfx->TA_font->length(buf),py+ph*0.5f-0.5f*gfx->TA_font->height(),0.0f,0xFFFFFFFF,buf);
                         }
                     }
                 }
@@ -6724,18 +6729,13 @@ script_exec:
 
                 if (unit[index].owner_id == players.local_human_id  )
                 {
-                    char buf[10];
                     gfx->set_color( ta3dSideData.side_int_data[ players.side_view ].metal_color );
-                    uszprintf(buf,10,"+%f",unit[index].cur_metal_prod);	*(strstr(buf,".")+2)=0;
-                    gfx->print_center(gfx->small_font, ta3dSideData.side_int_data[ players.side_view ].UnitMetalMake.x1, ta3dSideData.side_int_data[ players.side_view ].UnitMetalMake.y1,0.0f,buf);
-                    uszprintf(buf,10,"-%f",unit[index].cur_metal_cons);	*(strstr(buf,".")+2)=0;
-                    gfx->print_center(gfx->small_font, ta3dSideData.side_int_data[ players.side_view ].UnitMetalUse.x1, ta3dSideData.side_int_data[ players.side_view ].UnitMetalUse.y1,0.0f,buf);
+                    gfx->print_center(gfx->small_font, ta3dSideData.side_int_data[ players.side_view ].UnitMetalMake.x1, ta3dSideData.side_int_data[ players.side_view ].UnitMetalMake.y1,0.0f,format("+%.2f",unit[index].cur_metal_prod));
+                    gfx->print_center(gfx->small_font, ta3dSideData.side_int_data[ players.side_view ].UnitMetalUse.x1, ta3dSideData.side_int_data[ players.side_view ].UnitMetalUse.y1,0.0f,format("-%.2f",unit[index].cur_metal_cons));
 
                     gfx->set_color( ta3dSideData.side_int_data[ players.side_view ].energy_color );
-                    uszprintf(buf,10,"+%f",unit[index].cur_energy_prod);	*(strstr(buf,".")+2)=0;
-                    gfx->print_center(gfx->small_font, ta3dSideData.side_int_data[ players.side_view ].UnitEnergyMake.x1, ta3dSideData.side_int_data[ players.side_view ].UnitEnergyMake.y1,0.0f,buf);
-                    uszprintf(buf,10,"-%f",unit[index].cur_energy_cons);	*(strstr(buf,".")+2)=0;
-                    gfx->print_center(gfx->small_font, ta3dSideData.side_int_data[ players.side_view ].UnitEnergyUse.x1, ta3dSideData.side_int_data[ players.side_view ].UnitEnergyUse.y1,0.0f,buf);
+                    gfx->print_center(gfx->small_font, ta3dSideData.side_int_data[ players.side_view ].UnitEnergyMake.x1, ta3dSideData.side_int_data[ players.side_view ].UnitEnergyMake.y1,0.0f,format("+%.2f",unit[index].cur_energy_prod));
+                    gfx->print_center(gfx->small_font, ta3dSideData.side_int_data[ players.side_view ].UnitEnergyUse.x1, ta3dSideData.side_int_data[ players.side_view ].UnitEnergyUse.y1,0.0f,format("-%.2f",unit[index].cur_energy_cons));
                 }
 
                 glColor4ub(0xFF,0xFF,0xFF,0xFF);
@@ -6832,7 +6832,7 @@ script_exec:
             glDisable( GL_TEXTURE_2D );
         }
         glColor4ub(0xFF,0xFF,0xFF,0xFF);
-        set_uformat(U_UTF8);
+//        set_uformat(U_UTF8);
 
         pMutex.unlock();
     }
@@ -7185,7 +7185,7 @@ script_exec:
                     pMutex.lock();
                     continue;
                 }
-                if ((!(map->view_map->line[py>>1][px>>1]&mask) || !(map->sight_map->line[py>>1][px>>1]&mask) || (unit[i].cloaked && unit[i].owner_id != players.local_human_id ) ) && !unit[i].on_mini_radar )
+                if ((!(SurfaceByte(map->view_map,px>>1,py>>1) & mask) || !(SurfaceByte(map->sight_map,px>>1,py>>1) & mask) || (unit[i].cloaked && unit[i].owner_id != players.local_human_id ) ) && !unit[i].on_mini_radar )
                 {
                     units.unit[ i ].unlock();
                     pMutex.lock();
@@ -7375,7 +7375,7 @@ script_exec:
 
 
 
-    void INGAME_UNITS::draw(Camera& cam, MAP* map, bool underwater, bool limit, bool cullface, bool height_line)					// Dessine les unités visibles
+    void INGAME_UNITS::draw(MAP* map, bool underwater, bool limit, bool cullface, bool height_line)					// Dessine les unités visibles
     {
         if (nb_unit <= 0 || !unit)
             return;		// Pas d'unités à dessiner
@@ -7390,9 +7390,8 @@ script_exec:
         glColor4ub(0xFF,0xFF,0xFF,0xFF);
         float sea_lvl = limit ? map->sealvl-5.0f : map->sealvl;
         float virtual_t = (float)current_tick / TICKS_PER_SEC;
-        cam.setView();
         pMutex.lock();
-        bool low_def = cam.rpos.y > gfx->low_def_limit;
+        bool low_def = Camera::inGame->rpos.y > gfx->low_def_limit;
         if (low_def)
             glDisable(GL_DEPTH_TEST);
 
@@ -7407,7 +7406,7 @@ script_exec:
             || (unit[i].Pos.y + unit[i].model->top >= sea_lvl && !underwater))) // Si il y a une unité / If there is a unit
             {
                 unit[i].unlock();
-                unit[i].draw(virtual_t, cam, map, height_line);
+                unit[i].draw(virtual_t, map, height_line);
             }
             else
                 unit[i].unlock();
@@ -7426,12 +7425,10 @@ script_exec:
 
 
 
-    void INGAME_UNITS::draw_shadow(Camera& cam, const Vector3D& Dir, MAP* map, float alpha)	// Dessine les ombres des unités visibles
+    void INGAME_UNITS::draw_shadow(const Vector3D& Dir, MAP* map, float alpha)	// Dessine les ombres des unités visibles
     {
         if (nb_unit<=0 || unit==NULL) // Pas d'unités à dessiner
             return;
-
-        cam.setView();
 
         if (g_useStencilTwoSide) // Si l'extension GL_EXT_stencil_two_side est disponible
         {
@@ -7490,7 +7487,7 @@ script_exec:
         }
 
         gfx->lock();
-        features.draw_shadow(cam, Dir);
+        features.draw_shadow(Dir);
 
         glColorMask(0xFF,0xFF,0xFF,0xFF);
         glColor4f(0.0f,0.0f,0.0f,alpha);
@@ -7617,7 +7614,7 @@ script_exec:
     }
 
 
-    int INGAME_UNITS::Run()
+    void INGAME_UNITS::proc(void*)
     {
         thread_running = true;
         float dt = 1.0f / TICKS_PER_SEC;
@@ -7651,9 +7648,9 @@ script_exec:
                 gfx->lock();
 
                 if (map->fog_of_war & FOW_GREY)
-                    memset( map->sight_map->line[0], 0, map->sight_map->w * map->sight_map->h );		// Clear FOW map
-                memset( map->radar_map->line[0], 0, map->radar_map->w * map->radar_map->h );		// Clear radar map
-                memset( map->sonar_map->line[0], 0, map->sonar_map->w * map->sonar_map->h );		// Clear sonar map
+                    memset( map->sight_map->pixels, 0, map->sight_map->w * map->sight_map->h );		// Clear FOW map
+                memset( map->radar_map->pixels, 0, map->radar_map->w * map->radar_map->h );		// Clear radar map
+                memset( map->sonar_map->pixels, 0, map->sonar_map->w * map->sonar_map->h );		// Clear sonar map
 
                 for( int i = 0; i < index_list_size ; i++ )			// update fog of war, radar and sonar data
                     unit[ idx_list[ i ] ].draw_on_FOW();
@@ -7796,11 +7793,9 @@ script_exec:
         thread_running = false;
         thread_ask_to_stop = false;
         LOG_INFO("Unit engine: " << (float)(current_tick * 1000) / (msec_timer - unit_timer) << " ticks/sec");
-
-        return 0;
     }
 
-    void INGAME_UNITS::SignalExitThread()
+    void INGAME_UNITS::signalExitThread()
     {
         if (thread_running)
             thread_ask_to_stop = true;

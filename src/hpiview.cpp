@@ -23,13 +23,13 @@
 #include "misc/matrix.h"
 #include "TA3D_NameSpace.h"
 #include "ta3dbase.h"
-#include "jpeg/ta3d_jpg.h"
 #include <iostream>
 #include "tnt.h"
 #include "logs/logs.h"
 #include "misc/paths.h"
 #include "misc/resources.h"
 #include <fstream>
+#include <zlib.h>
 
 
 
@@ -101,16 +101,15 @@ namespace
         if(argc >= 4)
         {
             HPIManager = new cHPIHandler();
-            TA3D::VARS::pal = new RGB[256];
+            TA3D::VARS::pal = new SDL_Color[256];
             TA3D::UTILS::HPI::load_palette(pal);
-            set_palette(pal);      // Activate the palette
 
-            jpgalleg_init();
-
-            set_color_depth( 32 );
-            BITMAP* minimap = load_tnt_minimap_fast_bmp( argv[2] );
+            SDL_Surface* minimap = load_tnt_minimap_fast_bmp( argv[2] );
             if(minimap)
-                save_bitmap( argv[3], minimap, NULL );
+            {
+                SDL_SetPalette(minimap, SDL_LOGPAL|SDL_PHYSPAL, pal, 0, 256);
+                SDL_SaveBMP( minimap, argv[3] );
+            }
 
             delete[] TA3D::VARS::pal;
             delete HPIManager;
@@ -280,16 +279,14 @@ namespace
 
             if(data)
             {
-                set_color_depth( 32 );
-                set_gfx_mode( GFX_AUTODETECT_WINDOWED, 320, 200, 0, 0 );
-                TA3D::VARS::pal=new RGB[256];      // Allocate a new palette
+                SDL_SetVideoMode(320, 200, 32, 0);
+                TA3D::VARS::pal = new SDL_Color[256];      // Allocate a new palette
                 TA3D::UTILS::HPI::load_palette(pal);
-                set_palette(pal);      // Activate the palette
 
                 Gaf::AnimationList anims;
                 anims.loadGAFFromRawData(data);
                 std::ofstream   m_File;
-                m_File.open( format("%s.txt", get_filename( argv[2] )).c_str(), std::ios::out | std::ios::trunc );
+                m_File.open( format("%s.txt", Paths::ExtractFileName( argv[2] ).c_str()).c_str(), std::ios::out | std::ios::trunc );
 
                 m_File << "[gadget0]\n{\n";
                 m_File << "    filename=" << argv[2] << ";\n";
@@ -309,7 +306,8 @@ namespace
                         m_File << "        YPos=" << anims[i].ofs_y[ e ] << ";\n";
                         m_File << "        filename=" << filename << ";\n";
                         m_File << "    }\n";
-                        save_bitmap(filename.c_str(), anims[i].bmp[e], NULL);
+                        SDL_SetPalette(anims[i].bmp[e], SDL_LOGPAL|SDL_PHYSPAL, pal, 0, 256);
+                        SDL_SaveBMP( anims[i].bmp[e], filename.c_str() );
                     }
                     m_File << "}\n";
                 }
@@ -336,15 +334,13 @@ namespace
     {
         if(argc >= 3)
         {
-            jpgalleg_init();
-            cTAFileParser parser( argv[2], false, false, false );
+            TDFParser parser( argv[2], false, false, false );
             String filename = parser.pullAsString( "gadget0.filename" );
-            FILE *gaf_file = TA3D_OpenFile( get_filename( filename.c_str() ), "wb" );
+            FILE *gaf_file = TA3D_OpenFile( Paths::ExtractFileName( filename ), "wb" );
 
             if (gaf_file)
             {
-                set_color_depth(32);
-                set_gfx_mode(GFX_AUTODETECT_WINDOWED, 320, 200, 0, 0);
+                SDL_SetVideoMode(320, 200, 32, 0);
                 Gaf::Header header;
                 header.IDVersion = TA3D_GAF_TRUECOLOR;
                 header.Entries   = parser.pullAsInt("gadget0.entries");
@@ -375,7 +371,7 @@ namespace
                     char tmp[32];
                     memset(tmp, 0, 32);
                     memcpy(tmp, Entry.name.c_str(), Math::Min((int)Entry.name.size(), 32));
-                    tmp[32] = 0;
+                    tmp[31] = 0;
                     fwrite(tmp, 32, 1, gaf_file);
 
                     Gaf::Frame::Entry FrameEntry;
@@ -399,15 +395,17 @@ namespace
                         FrameData.Unknown2 = 0;
                         FrameData.Compressed = 1;
 
-                        BITMAP *frame_img = gfx->load_image( parser.pullAsString( format( "gadget%d.frame%d.filename", i + 1, e ) ) );
+                        SDL_Surface *frame_img = gfx->load_image( parser.pullAsString( format( "gadget%d.frame%d.filename", i + 1, e ) ) );
                         if( frame_img )
                         {
                             FrameData.Width = frame_img->w;
                             FrameData.Height = frame_img->h;
                             bool alpha = false;
+                            SDL_LockSurface(frame_img);
                             for( int y = 0 ; y < frame_img->h && !alpha ; y++ )
                                 for( int x = 0 ; x < frame_img->w && !alpha ; x++ )
-                                    alpha |= (frame_img->line[y][(x<<2)+3] != 255);
+                                    alpha |= (getr(SurfaceInt(frame_img, x, y)) != 255);
+                            SDL_UnlockSurface(frame_img);
                             FrameData.Transparency = alpha ? 1 : 0;
                             FrameData.PtrFrameData = ftell( gaf_file ) + 24;
 
@@ -417,43 +415,15 @@ namespace
                             byte *buffer = new byte[ buf_size ];
 
                             int img_size = buf_size;
-                            if( save_memory_jpg_ex( buffer, &img_size, frame_img, NULL, 95, JPG_SAMPLING_444, NULL ) ) // RGB channels
-                            {
-                                img_size = buf_size;
-                                if( save_memory_jpg_ex( buffer, &img_size, frame_img, NULL, 95, JPG_SAMPLING_444 | JPG_OPTIMIZE, NULL ) )		// RGB channels
-                                    printf("error saving '%s'\n", parser.pullAsString( format( "gadget%d.frame%d.filename", i + 1, e ) ).c_str() );
-                            }
+                            uLongf __size = img_size;
+                            compress2 ( buffer, &__size, (Bytef*) frame_img->pixels, frame_img->w * frame_img->h * frame_img->format->BytesPerPixel, 9);
+                            img_size = __size;
 
                             fwrite( &img_size, sizeof( img_size ), 1, gaf_file );		// Save the result
                             fwrite( buffer, img_size, 1, gaf_file );
 
-                            if( alpha ) // Alpha channel
-                            {
-                                for( int y = 0 ; y < frame_img->h ; y++ )
-                                {
-                                    for( int x = 0 ; x < frame_img->w ; x++ )
-                                    {
-                                        uint32 c = frame_img->line[y][(x<<2)+3];
-                                        ((uint32*)(frame_img->line[y]))[x] = c * 0x010101;
-                                    }
-                                }
-                                img_size = buf_size;
-                                if(save_memory_jpg_ex( buffer, &img_size, frame_img, NULL, 100, JPG_GREYSCALE | JPG_OPTIMIZE, NULL ) )
-                                {
-                                    img_size = buf_size;
-                                    if(save_memory_jpg_ex( buffer, &img_size, frame_img, NULL, 100, JPG_GREYSCALE, NULL))
-                                    {
-                                        std::cerr << "Error saving alpha channel for '"
-                                            << parser.pullAsString(format("gadget%d.frame%d.filename", i + 1, e ) ).c_str() << "'" << std::endl;
-                                    }
-                                }
-
-                                fwrite( &img_size, sizeof( img_size ), 1, gaf_file );		// Save the result
-                                fwrite( buffer, img_size, 1, gaf_file );
-                            }
-
                             delete[] buffer;
-                            destroy_bitmap( frame_img );
+                            SDL_FreeSurface( frame_img );
                         }
                         else
                         {
@@ -485,8 +455,7 @@ namespace
  */
 int hpiview(int argc, char *argv[])
 {
-    allegro_init();
-    set_uformat(U_ASCII); // TODO Ensure UTF8 is working
+    SDL_Init(SDL_INIT_AUDIO|SDL_INIT_VIDEO);
 
     if(argc >= 2)
     {
@@ -513,7 +482,7 @@ int hpiview(int argc, char *argv[])
         if (act == "create_gaf" || act == "--create_gaf" || act == "/create_gaf")
             return hpiviewCmdCreateGAF(argc, argv);
     }
-    allegro_exit();
+    SDL_Quit();
     return false;
 }
 

@@ -137,13 +137,6 @@ namespace TA3D
         String guis_dir;
         //!
         String gamedata_dir;
-
-    private:
-        /*!
-        ** \brief
-        ** \param data
-        */
-        char* get_line(char *data) const;
     };
 
 
@@ -153,7 +146,7 @@ namespace TA3D
     /*!
     ** \brief
     */
-    IntrElementCoords read_gui_element(UTILS::cTAFileParser* parser, const String& element, bool bottom = false);
+    IntrElementCoords read_gui_element(TDFParser* parser, const String& element, bool bottom = false);
 
 
     /*!

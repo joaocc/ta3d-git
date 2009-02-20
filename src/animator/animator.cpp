@@ -20,7 +20,7 @@
 
 #define TA3D_BASIC_ENGINE
 #include "../ta3dbase.h"		// Moteur
-#include "../threads/cThread.h"
+#include "../threads/thread.h"
 #include "../gui.h"			// Interface utilisateur
 #include "../TA3D_hpi.h"		// Interface HPI requis pour 3do.h
 #include "../gfx/particles/particles.h"
@@ -32,7 +32,6 @@
 #include "../misc/math.h"
 #include "../misc/osinfo.h"
 #include "../languages/i18n.h"
-#include "../jpeg/ta3d_jpg.h"
 #include "../converters/obj.h"
 #include "animator.h"
 
@@ -104,10 +103,10 @@ namespace Menus
         bool keyIsPressed(false);
         do
         {
-            // Get if a key was pressed
-            keyIsPressed = keypressed();
             // Grab user events
             pArea->check();
+            // Get if a key was pressed
+            keyIsPressed = pArea->key_pressed;
             // Wait to reduce CPU consumption
             rest(TA3D_MENUS_RECOMMENDED_TIME_MS_FOR_RESTING);
 
@@ -253,7 +252,7 @@ namespace Menus
         int h = (int)(render->y2 - render->y1);
         if ((GLuint)render->Data == 0)
         {
-            allegro_gl_set_texture_format(GL_RGB8);
+            gfx->set_texture_format(GL_RGB8);
             render->Data = (uint32) gfx->create_texture( w, h, FILTER_LINEAR );
         }
         texture = render->Data;

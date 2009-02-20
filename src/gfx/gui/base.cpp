@@ -1,4 +1,5 @@
-
+#include "../../stdafx.h"
+#include "../gfx.toolkit.h"
 #include "base.h"
 
 namespace TA3D
@@ -6,7 +7,7 @@ namespace TA3D
 
 
 
-    TA3D::GfxFont gui_font;
+    TA3D::Font *gui_font;
 
 
 

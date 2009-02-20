@@ -32,7 +32,6 @@
 #include "EngineClass.h"
 #include "UnitEngine.h"
 #include "gfx/fx.h"
-#include "misc/lzw.h"					// Support for LZW compression
 #include <list>
 #include "misc/math.h"
 #include "logs/logs.h"
@@ -183,20 +182,6 @@ namespace TA3D
         init();
     }
 
-    char* MAP_OTA::get_line(char *data)
-    {
-        int pos=0;
-        while (data[pos] != 0 && data[pos] != 13 && data[pos] != 10)
-            ++pos;
-        char *d=new char[pos+1];
-        memcpy(d,data,pos);
-        d[pos]=0;
-        return d;
-    }
-
-
-
-
 
     void MAP::init()
     {
@@ -212,6 +197,7 @@ namespace TA3D
         radar_map = NULL;
         sonar_map = NULL;
 
+        shadow2_shader.load("shaders/map_shadow.frag", "shaders/map_shadow.vert");
         detail_shader.load( "shaders/details.frag", "shaders/details.vert" );
         details_tex = 0;
         color_factor = 1.0f;
@@ -498,7 +484,7 @@ namespace TA3D
             return false;
         for(int y=y1;y<y2;y++)
             for(int x=x1;x<x2;x++)
-                if( !(view_map->line[y][x] & c) )
+                if( !(SurfaceByte(view_map,x,y) & c) )
                     return false;
         return true;
     }
@@ -660,12 +646,13 @@ namespace TA3D
             }*/
         /*---------------------------------------------------------------------------*/
 
-        if( view_map )		destroy_bitmap( view_map );
-        if( sight_map )		destroy_bitmap( sight_map );
-        if( radar_map )		destroy_bitmap( radar_map );
-        if( sonar_map )		destroy_bitmap( sonar_map );
+        if( view_map )		SDL_FreeSurface( view_map );
+        if( sight_map )		SDL_FreeSurface( sight_map );
+        if( radar_map )		SDL_FreeSurface( radar_map );
+        if( sonar_map )		SDL_FreeSurface( sonar_map );
 
         detail_shader.destroy();
+        shadow2_shader.destroy();
         gfx->destroy_texture( details_tex );
 
         if(low_vtx)			delete[] low_vtx;
@@ -724,7 +711,7 @@ namespace TA3D
         }
         if(mini) {
             gfx->destroy_texture( glmini );
-            destroy_bitmap(mini);
+            SDL_FreeSurface(mini);
         }
         init();
         detail_shader.destroy();		// Because init will reload it
@@ -734,40 +721,42 @@ namespace TA3D
 
     void MAP::clear_FOW( sint8 FOW_flags )
     {
-        if( FOW_flags < 0 )	FOW_flags = fog_of_war;
+        if (FOW_flags < 0)	FOW_flags = fog_of_war;
         fog_of_war = FOW_flags;
 
-        if( fog_of_war & FOW_BLACK )
-            memset( view_map->line[0], 0, view_map->w * view_map->h );
+        if (fog_of_war & FOW_BLACK)
+            memset( view_map->pixels, 0, view_map->w * view_map->h );
         else
-            memset( view_map->line[0], 0xFF, view_map->w * view_map->h );
-        if( fog_of_war & FOW_GREY )
-            memset( sight_map->line[0], 0, sight_map->w * sight_map->h );
+            memset( view_map->pixels, 0xFF, view_map->w * view_map->h );
+        if (fog_of_war & FOW_GREY)
+            memset( sight_map->pixels, 0, sight_map->w * sight_map->h );
         else
-            memset( sight_map->line[0], 0xFF, sight_map->w * sight_map->h );
+            memset( sight_map->pixels, 0xFF, sight_map->w * sight_map->h );
 
-        if( fog_of_war == FOW_DISABLED ) {
-            memset( radar_map->line[0], 0xFF, radar_map->w * radar_map->h );
-            memset( sonar_map->line[0], 0xFF, sonar_map->w * sonar_map->h );
+        if (fog_of_war == FOW_DISABLED)
+        {
+            memset( radar_map->pixels, 0xFF, radar_map->w * radar_map->h );
+            memset( sonar_map->pixels, 0xFF, sonar_map->w * sonar_map->h );
         }
     }
 
     void MAP::load_details_texture( const String &filename )
     {
-        set_color_depth( 32 );
-        BITMAP *tex = gfx->load_image(filename);
-        if( tex ) {
+        SDL_Surface *tex = gfx->load_image(filename);
+        if (tex)
+        {
             uint32 average = 0;
             for( int y = 0 ; y < tex->h ; y++ )
                 for( int x = 0 ; x < tex->w ; x++ )
-                    average += tex->line[y][(x<<2)] + tex->line[y][(x<<2)+1] + tex->line[y][(x<<2)+2];
-            average /= tex->w*tex->h*3;
+                    average += SurfaceByte(tex, x<<2, y) + SurfaceByte(tex,(x<<2)+1,y) + SurfaceByte(tex,(x<<2)+2,y);
+            average /= tex->w * tex->h * 3;
             if( average == 0 )	average = 1;
             color_factor = 255.0f / average;
             details_tex = gfx->make_texture( tex, FILTER_TRILINEAR, false );
-            destroy_bitmap( tex );
+            SDL_FreeSurface( tex );
         }
-        else {
+        else
+        {
             details_tex = 0;
             color_factor = 1.0f;
         }
@@ -786,149 +775,40 @@ namespace TA3D
     void MAP_OTA::load(char *data,int ota_size)
     {
         destroy();
-        set_uformat(U_ASCII);
-        char *pos=data;
-        char *ligne=NULL;
-        int nb=0;
-        int index=0;
-        char *limit=data+ota_size;
-        char *f;
-        int n_pos=0;
-        do {
-            nb++;
-            if(ligne)
-                delete[] ligne;
-            ligne=get_line(pos);
-            strlwr(ligne);
-            while(pos[0]!=0 && pos[0]!=13 && pos[0]!=10)	{	pos++;	n_pos++;	}
-            while(pos[0]==13 || pos[0]==10)	{	pos++;	n_pos++;	}
 
-            if(strstr(ligne,"//") || strstr(ligne,"/*") || strstr(ligne,"{")) { }		// Saute les commentaires
-            else if((f=strstr(ligne,"missionname="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                missionname = f+12;
-            }
-            else if((f=strstr(ligne,"planet="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                planet = f+7;
-            }
-            else if((f=strstr(ligne,"glamour="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                glamour = f+8;
-            }
-            else if((f=strstr(ligne,"missiondescription="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                missiondescription = f+19;
-                int prec = 0;
-                int cur = 0;
-                int nb=0;
-                while( cur < missiondescription.size() ) {
-                    if(missiondescription[cur]=='\t')	missiondescription[cur] = ' ';
-                    if(missiondescription[cur]==' ')	prec = cur;
-                    nb++;
-                    if(nb>34) {
-                        missiondescription[prec]='\n';
-                        nb = cur-prec;
-                    }
-                    cur++;
-                }
-            }
-            else if((f=strstr(ligne,"tidalstrength="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                tidalstrength = atoi(f+14);
-            }
-            else if((f=strstr(ligne,"solarstrength="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                solarstrength = atoi(f+14);
-            }
-            else if((f=strstr(ligne,"lavaworld="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                lavaworld = (f[10]=='1');
-            }
-            else if((f=strstr(ligne,"killmul="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                killmul = atoi(f+8);
-            }
-            else if((f=strstr(ligne,"minwindspeed="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                minwindspeed = atoi(f+13);
-            }
-            else if((f=strstr(ligne,"maxwindspeed="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                maxwindspeed = atoi(f+13);
-            }
-            else if((f=strstr(ligne,"gravity="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                gravity = atoi(f+8)*0.1f;
-            }
-            else if((f=strstr(ligne,"numplayers="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                numplayers = f+11;
-            }
-            else if((f=strstr(ligne,"size="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                map_size = f+5;
-            }
-            else if((f=strstr(ligne,"surfacemetal="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                SurfaceMetal = atoi(f+13);
-            }
-            else if((f=strstr(ligne,"mohometal="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                MohoMetal = atoi(f+10);
-            }
-            else if((f=strstr(ligne,"specialwhat=startpos"))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                index = atoi(f+20)-1;
-            }
-            else if((f=strstr(ligne,"xpos="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                startX[index] = atoi(f+5);
-            }
-            else if((f=strstr(ligne,"zpos="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                startZ[index] = atoi(f+5);
-            }
-            else if((f=strstr(ligne,"waterdoesdamage="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                waterdoesdamage = atoi(f+16)>0;
-            }
-            else if((f=strstr(ligne,"waterdamage="))) {
-                if((strstr(ligne,";")))	*(strstr(ligne,";"))=0;
-                waterdamage = atoi(f+12);
-            }
-            else if((f=strstr(ligne,"missionhint="))) {}
-            else if((f=strstr(ligne,"brief="))) {}
-            else if((f=strstr(ligne,"narration="))) {}
-            else if((f=strstr(ligne,"glamour="))) {}
-            else if((f=strstr(ligne,"lineofsight="))) {}
-            else if((f=strstr(ligne,"mapping="))) {}
-            else if((f=strstr(ligne,"timemul="))) {}
-            else if((f=strstr(ligne,"memory="))) {}
-            else if((f=strstr(ligne,"useonlyunits="))) {}
-            else if((f=strstr(ligne,"schemacount="))) {}
-            else if((f=strstr(ligne,"type="))) {
-                if( strstr( f+5, "network") )
-                    network = true;
-            }
-            else if((f=strstr(ligne,"aiprofile="))) {}
-            else if((f=strstr(ligne,"humanmetal="))) {}
-            else if((f=strstr(ligne,"computermetal="))) {}
-            else if((f=strstr(ligne,"humanenergy="))) {}
-            else if((f=strstr(ligne,"computerenergy="))) {}
-            else if((f=strstr(ligne,"meteorweapon="))) {}
-            else if((f=strstr(ligne,"meteorradius="))) {}
-            else if((f=strstr(ligne,"meteordensity="))) {}
-            else if((f=strstr(ligne,"meteorduration="))) {}
-            else if((f=strstr(ligne,"meteorinterval="))) {}
-            else if((f=strstr(ligne,"killenemycommander="))) {}
-            else if((f=strstr(ligne,"destroyallunits="))) {}
-            else if((f=strstr(ligne,"allunitskilled="))) {}
-            else if((f=strstr(ligne,"featurename="))) {}
+        TDFParser parser;
+        parser.loadFromMemory("OTA",data,ota_size,false,true,false);
 
-        } while(nb<1000 && pos<limit);
-        delete[] ligne;
-        ligne=NULL;
+        missionname = parser.pullAsString("GlobalHeader.missionname");
+        planet = parser.pullAsString("GlobalHeader.planet");
+        glamour = parser.pullAsString("GlobalHeader.glamour");
+        missiondescription = parser.pullAsString("GlobalHeader.missiondescription");
+        tidalstrength = parser.pullAsInt("GlobalHeader.tidalstrength");
+        solarstrength = parser.pullAsInt("GlobalHeader.solarstrength");
+        lavaworld = parser.pullAsBool("GlobalHeader.lavaworld");
+        killmul = parser.pullAsInt("GlobalHeader.killmul", 50);
+        minwindspeed = parser.pullAsInt("GlobalHeader.minwindspeed");
+        maxwindspeed = parser.pullAsInt("GlobalHeader.maxwindspeed");
+        gravity = parser.pullAsInt("GlobalHeader.gravity") * 0.1f;
+        numplayers = parser.pullAsString("GlobalHeader.numplayers");
+        map_size = parser.pullAsString("GlobalHeader.size");
+        SurfaceMetal = parser.pullAsInt("GlobalHeader.Schema 0.SurfaceMetal");
+        MohoMetal = parser.pullAsInt("GlobalHeader.Schema 0.MohoMetal");
+        for(int s = 0 ; parser.exists( format("globalheader.schema 0.specials.special%d", s) ) ; s++)
+        {
+            String key = format("GlobalHeader.Schema 0.specials.special%d.", s);
+            String specialWhat = parser.pullAsString(key + "specialwhat");
+            if (StartsWith( specialWhat.toLower(), "startpos"))
+            {
+                int index = String(specialWhat.substr(8, specialWhat.size() - 8)).toInt32() - 1;
+                startX[index] = parser.pullAsInt(key + "xpos");
+                startZ[index] = parser.pullAsInt(key + "zpos");
+            }
+        }
+        waterdoesdamage = parser.pullAsBool("GlobalHeader.waterdoesdamage");
+        waterdamage = parser.pullAsInt("GlobalHeader.waterdamage");
+        network = StartsWith( parser.pullAsString("GlobalHeader.Schema 0.type").toLower(), "network");
+
         if(waterdamage==0)
             waterdoesdamage=false;
     }
@@ -947,6 +827,8 @@ namespace TA3D
         float lw = mini_w / 252.0f;
         float lh = mini_h / 252.0f;
         gfx->drawtexture(glmini, x1, y1, x1 + rw, y1 + rh, 0.0f, 0.0f, lw, lh);
+
+        if (rh == 0 || rw == 0) return;
 
         if (fog_of_war != FOW_DISABLED)
         {
@@ -972,7 +854,7 @@ namespace TA3D
                 {
                     int mx = MX >> 17;
                     MX += DX;
-                    if(!(view_map->line[my][mx]&player_mask))
+                    if(!(SurfaceByte(view_map,mx,my) & player_mask))
                     {
                         if( old_col != 0 )
                         {
@@ -988,7 +870,7 @@ namespace TA3D
                     }
                     else
                     {
-                        if(!(sight_map->line[my][mx] & player_mask))
+                        if(!(SurfaceByte(sight_map,mx,my) & player_mask))
                         {
                             if( old_col != 1 )
                             {
@@ -1150,14 +1032,14 @@ namespace TA3D
                         if(rx<0)	rx=0;
                         if(lx>=sonar_map->w)	lx=sonar_map->w-1;
                         for(; (rx & 3) && rx < view_map->w ; rx++ )
-                            sonar_map->line[ry][rx] |= mask;
+                            SurfaceByte(sonar_map,rx,ry) |= mask;
                         rx >>= 2;
                         int lx2 = lx >> 2;
                         for(;rx<lx2;rx++)
-                            ((uint32*)(sonar_map->line[ry]))[rx] |= mask32;
+                            SurfaceInt(sonar_map,rx,ry) |= mask32;
                         rx <<= 2;
                         for(; rx <= lx ; rx++ )
-                            sonar_map->line[ry][rx] |= mask;
+                            SurfaceByte(sonar_map,rx,ry) |= mask;
                     }
                     if(y != 0)
                     {
@@ -1171,14 +1053,14 @@ namespace TA3D
                             if (lx >= sonar_map->w)
                                 lx = sonar_map->w - 1;
                             for(; (rx & 3) && rx < view_map->w ; ++rx)
-                                sonar_map->line[ry][rx] |= mask;
+                                SurfaceByte(sonar_map,rx,ry) |= mask;
                             rx >>= 2;
                             int lx2 = lx >> 2;
                             for(;rx<lx2;rx++)
-                                ((uint32*)(sonar_map->line[ry]))[rx] |= mask32;
+                                SurfaceInt(sonar_map,rx,ry) |= mask32;
                             rx <<= 2;
                             for(; rx <= lx ; rx++ )
-                                sonar_map->line[ry][rx] |= mask;
+                                SurfaceByte(sonar_map,rx,ry) |= mask;
                         }
                     }
                 }
@@ -1194,14 +1076,14 @@ namespace TA3D
                         if(rx<0)	rx=0;
                         if(lx>=radar_map->w)	lx=radar_map->w-1;
                         for(; (rx & 3) && rx < view_map->w ; rx++ )
-                            radar_map->line[ry][rx] |= mask;
+                            SurfaceByte(radar_map,rx,ry) |= mask;
                         rx >>= 2;
                         int lx2 = lx >> 2;
                         for(;rx<lx2;rx++)
-                            ((uint32*)(radar_map->line[ry]))[rx] |= mask32;
+                            SurfaceInt(radar_map,rx,ry) |= mask32;
                         rx <<= 2;
                         for(; rx <= lx ; rx++ )
-                            radar_map->line[ry][rx] |= mask;
+                            SurfaceByte(radar_map,rx,ry) |= mask;
                     }
                     if (y != 0)
                     {
@@ -1213,14 +1095,14 @@ namespace TA3D
                             if(rx<0)	rx=0;
                             if(lx>=radar_map->w)	lx=radar_map->w-1;
                             for(; (rx & 3) && rx < view_map->w ; rx++ )
-                                radar_map->line[ry][rx] |= mask;
+                                SurfaceByte(radar_map,rx,ry) |= mask;
                             rx >>= 2;
                             int lx2 = lx >> 2;
                             for(;rx<lx2;rx++)
-                                ((uint32*)(radar_map->line[ry]))[rx] |= mask32;
+                                SurfaceInt(radar_map,rx,ry) |= mask32;
                             rx <<= 2;
                             for(; rx <= lx ; rx++ )
-                                radar_map->line[ry][rx] |= mask;
+                                SurfaceByte(radar_map,rx,ry) |= mask;
                         }
                     }
                 }
@@ -1229,21 +1111,21 @@ namespace TA3D
                 {
                     int x=(int)(0.5f+sqrtf((float)(r2-y*y)));
                     int ry=py-y;
-                    if (ry>=0 && ry<sight_map->h)
+                    if (ry >= 0 && ry < sight_map->h)
                     {
                         int rx=px-x;
                         int lx=px+x;
                         if(rx<0)	rx=0;
                         if(lx>=sight_map->w)	lx=sight_map->w-1;
                         for(; (rx & 3) && rx < view_map->w ; rx++ )
-                            sight_map->line[ry][rx] |= mask;
+                            SurfaceByte(sight_map,rx,ry) |= mask;
                         rx >>= 2;
                         int lx2 = lx >> 2;
                         for(;rx<lx2;rx++)
-                            ((uint32*)(sight_map->line[ry]))[rx] |= mask32;
+                            SurfaceInt(sight_map,rx,ry) |= mask32;
                         rx <<= 2;
                         for(; rx <= lx ; rx++ )
-                            sight_map->line[ry][rx] |= mask;
+                            SurfaceByte(sight_map,rx,ry) |= mask;
                     }
                     if (y != 0)
                     {
@@ -1255,14 +1137,14 @@ namespace TA3D
                             if(rx<0)	rx=0;
                             if(lx>=sight_map->w)	lx=sight_map->w-1;
                             for(; (rx & 3) && rx < view_map->w ; rx++ )
-                                sight_map->line[ry][rx] |= mask;
+                                SurfaceByte(sight_map,rx,ry) |= mask;
                             rx >>= 2;
                             int lx2 = lx >> 2;
                             for(;rx<lx2;rx++)
-                                ((uint32*)(sight_map->line[ry]))[rx] |= mask32;
+                                SurfaceInt(sight_map,rx,ry) |= mask32;
                             rx <<= 2;
                             for(; rx <= lx ; rx++ )
-                                sight_map->line[ry][rx] |= mask;
+                                SurfaceByte(sight_map,rx,ry) |= mask;
                         }
                     }
                 }
@@ -1278,14 +1160,14 @@ namespace TA3D
                         if(rx<0)	rx=0;
                         if(lx>=view_map->w)	lx=view_map->w-1;
                         for(; (rx & 3) && rx < view_map->w ; rx++ )
-                            view_map->line[ry][rx] |= mask;
+                            SurfaceByte(view_map,rx,ry) |= mask;
                         rx >>= 2;
                         int lx2 = lx >> 2;
                         for(;rx<lx2;rx++)
-                            ((uint32*)(view_map->line[ry]))[rx] |= mask32;
+                            SurfaceInt(view_map,rx,ry) |= mask32;
                         rx <<= 2;
                         for(; rx <= lx ; rx++ )
-                            view_map->line[ry][rx] |= mask;
+                            SurfaceByte(view_map,rx,ry) |= mask;
                     }
                     if (y != 0)
                     {
@@ -1297,14 +1179,14 @@ namespace TA3D
                             if(rx<0)	rx=0;
                             if(lx>=view_map->w)	lx=view_map->w-1;
                             for(; (rx & 3) && rx < view_map->w ; rx++ )
-                                view_map->line[ry][rx] |= mask;
+                                SurfaceByte(view_map,rx,ry) |= mask;
                             rx >>= 2;
                             int lx2 = lx >> 2;
                             for(;rx<lx2;rx++)
-                                ((uint32*)(view_map->line[ry]))[rx] |= mask32;
+                                SurfaceInt(view_map,rx,ry) |= mask32;
                             rx <<= 2;
                             for(; rx <= lx ; rx++ )
-                                view_map->line[ry][rx] |= mask;
+                                SurfaceByte(view_map,rx,ry) |= mask;
                         }
                     }
                 }
@@ -1336,13 +1218,31 @@ namespace TA3D
         pMutex.unlock();
     }
 
+    std::vector<Vector3D> MAP::get_visible_volume()
+    {
+        std::vector<Vector3D>  volume = Camera::inGame->getFrustum();
+        for(int i = 4 ; i < 8 ; i++)
+        {
+            Vector3D dir = volume[i] - volume[i-4];
+            float dist_max = dir.norm();
+            dir = 1.0f / dist_max * dir;;
+            if (dir.y > 0.0f)       // Heading up
+            {
+                volume[i] += (512.0f * H_DIV - volume[i].y) * dir;
+                continue;
+            }
+            Vector3D map_hit = hit( volume[i-4], dir, false, dist_max, true) + 30.0f * dir;
+            if ( (map_hit - volume[i-4]) % dir < dist_max)
+                volume[i] = map_hit;
+        }
+        return volume;
+    }
 
     inline float sq( float a )	{	return a * a;	}
 
 
     void MAP::draw(Camera* cam,byte player_mask,bool FLAT,float niv,float t,float dt,bool depth_only,bool check_visibility,bool draw_uw)
     {
-        cam->setView();
         if (FLAT && !water)
             return;
 
@@ -1493,7 +1393,7 @@ namespace TA3D
             flat[8].x=16.0f;	flat[8].y=flat[0].y;				flat[8].z=16.0f;
         }
 
-        bool enable_details = !cam->mirror;
+        bool enable_details = !cam->mirror && (lp_CONFIG->detail_tex || lp_CONFIG->shadow_quality >= 2);
 
         if (ntex > 0 && !depth_only)
         {
@@ -1554,11 +1454,22 @@ namespace TA3D
         glColorPointer(4,GL_UNSIGNED_BYTE,0,buf_c);
         glVertexPointer( 3, GL_FLOAT, 0, buf_p);
 
-        if (lp_CONFIG->detail_tex && !FLAT && enable_details)
+        if (!FLAT && enable_details)
         {
-            detail_shader.on();
-            detail_shader.setvar1f( "coef", color_factor );
-            detail_shader.setvar1i( "details", 1 );
+            switch(lp_CONFIG->shadow_quality)
+            {
+            case 2:
+                shadow2_shader.on();
+                shadow2_shader.setvar1f( "coef", color_factor );
+                shadow2_shader.setvar1i( "details", 1 );
+                shadow2_shader.setvar1i( "shadowMap", 7 );
+                shadow2_shader.setmat4f( "light_Projection", gfx->shadowMapProjectionMatrix);
+                break;
+            default:
+                detail_shader.on();
+                detail_shader.setvar1f( "coef", color_factor );
+                detail_shader.setvar1i( "details", 1 );
+            };
         }
 
         glClientActiveTextureARB(GL_TEXTURE0_ARB );
@@ -1582,11 +1493,11 @@ namespace TA3D
                     int X = x * (bloc_w_db - 2) / low_w;
                     int Z;
                     Z=Y+get_zdec_notest(X,Y);					if(Z>=bloc_h_db-1)	Z=bloc_h_db-2;
-                    if (!(view_map->line[Z>>1][X>>1]&player_mask))	low_col[i<<2]=low_col[(i<<2)+1]=low_col[(i<<2)+2]=low_col[(i<<2)+3]=0;
+                    if (!(SurfaceByte(view_map,X>>1,Z>>1) & player_mask))	low_col[i<<2]=low_col[(i<<2)+1]=low_col[(i<<2)+2]=low_col[(i<<2)+3]=0;
                     else
                     {
                         low_col[(i<<2)+3] = 255;
-                        if (!(sight_map->line[Z >> 1][X >> 1]&player_mask))
+                        if (!(SurfaceByte(sight_map,X>>1,Z>>1) & player_mask))
                             low_col[i << 2] = low_col[(i << 2) + 1] = low_col[(i << 2) + 2] = 127;
                         else
                             low_col[i << 2] = low_col[(i << 2) + 1] = low_col[(i << 2) + 2] = 255;
@@ -1687,7 +1598,7 @@ namespace TA3D
                     int X = x<< 1;
                     if (!FLAT && check_visibility)
                     {
-                        if (!(view_map->line[y][x]&player_mask))
+                        if (!(SurfaceByte(view_map,x,y) & player_mask))
                         {
                             if (water)
                             {
@@ -1699,7 +1610,7 @@ namespace TA3D
                         }
                         else
                         {
-                            if (!(sight_map->line[y][x]&player_mask))
+                            if (!(SurfaceByte(sight_map,x,y) & player_mask))
                             {
                                 if (map_data[Y][X].underwater || map_data[Y|1][X].underwater || map_data[Y][X|1].underwater || map_data[Y|1][X|1].underwater)
                                     view[y][x]=2;
@@ -1812,7 +1723,7 @@ namespace TA3D
                                     (h_map[Y|1][X|1] < sealvl || h_map[Y][X|1] < sealvl || h_map[Y|1][X] < sealvl || h_map[Y][X] < sealvl) &&
                                     (h_map[Y|1][X|1] >= sealvl || h_map[Y|1][X] >= sealvl || h_map[Y][X|1] >= sealvl || h_map[Y][X] >= sealvl) &&
                                     (Math::RandFromTable()%4000)<=lavaprob &&
-                                    (view_map->line[y][x]&player_mask) && lp_CONFIG->waves )
+                                    (SurfaceByte(view_map,x,y) & player_mask) && lp_CONFIG->waves )
                                 {
                                     Vector3D POS;
                                     POS.x = (x << 4) - dwm + 8.0f;
@@ -1957,24 +1868,25 @@ namespace TA3D
                         int Z;
                         int grey = 0;
                         int black = 0;
-                        Z=Y+get_zdec_notest(X,Y);									if(Z>=bloc_h_db-1)	Z=bloc_h_db-2;
-                        if(!(view_map->line[Z>>1][x]&player_mask))				{	color[0]=color[1]=color[2]=0;	black++;	}
-                        else if(!(sight_map->line[Z>>1][x]&player_mask))		{	color[0]=color[1]=color[2]=127;	grey++;		}
+                        Z=Y+get_zdec_notest(X,Y);									    if (Z>=bloc_h_db-1)	Z=bloc_h_db-2;
+                        if(!(SurfaceByte(view_map,x,Z>>1) & player_mask))				{	color[0]=color[1]=color[2]=0;	black++;	}
+                        else if(!(SurfaceByte(sight_map,x,Z>>1) & player_mask))		    {	color[0]=color[1]=color[2]=127;	grey++;		}
                         if( X + 2 < bloc_w_db )
                         {
-                            Z=Y+get_zdec_notest(X+2,Y);								if(Z>=bloc_h_db-1)	Z=bloc_h_db-2;
-                            if(!(view_map->line[Z>>1][x+1]&player_mask))		{	color[8]=color[9]=color[10]=0;		black++;	}
-                            else if(!(sight_map->line[Z>>1][x+1]&player_mask))	{	color[8]=color[9]=color[10]=127;	grey++;		}
+                            Z=Y+get_zdec_notest(X+2,Y);								    if (Z>=bloc_h_db-1)	Z=bloc_h_db-2;
+                            if(!(SurfaceByte(view_map,x+1,Z>>1) & player_mask))		    {	color[8]=color[9]=color[10]=0;		black++;	}
+                            else if(!(SurfaceByte(sight_map,x+1,Z>>1) & player_mask))	{	color[8]=color[9]=color[10]=127;	grey++;		}
                         }
                         if( Y + 2 < bloc_h_db )
                         {
                             Z=Y+2+get_zdec_notest(X,Y+2);							if(Z>=bloc_h_db-1)	Z=bloc_h_db-2;
-                            if(!(view_map->line[Z>>1][x]&player_mask))			{	color[24]=color[25]=color[26]=0;	black++;	}
-                            else if(!(sight_map->line[Z>>1][x]&player_mask))	{	color[24]=color[25]=color[26]=127;	grey++;		}
-                            if( X + 2 < bloc_w_db ) {
-                                Z=Y+2+get_zdec_notest(X+2,Y+2);							if(Z>=bloc_h_db-1)	Z=bloc_h_db-2;
-                                if(!(view_map->line[Z>>1][x+1]&player_mask))		{	color[32]=color[33]=color[34]=0;	black++;	}
-                                else if(!(sight_map->line[Z>>1][x+1]&player_mask))	{	color[32]=color[33]=color[34]=127;	grey++;		}
+                            if(!(SurfaceByte(view_map,x,Z>>1) & player_mask))		{	color[24]=color[25]=color[26]=0;	black++;	}
+                            else if(!(SurfaceByte(sight_map,x,Z>>1) & player_mask))	{	color[24]=color[25]=color[26]=127;	grey++;		}
+                            if( X + 2 < bloc_w_db )
+                            {
+                                Z=Y+2+get_zdec_notest(X+2,Y+2);							    if(Z>=bloc_h_db-1)	Z=bloc_h_db-2;
+                                if(!(SurfaceByte(view_map,x+1,Z>>1) & player_mask))		    {	color[32]=color[33]=color[34]=0;	black++;	}
+                                else if(!(SurfaceByte(sight_map,x+1,Z>>1) & player_mask))	{	color[32]=color[33]=color[34]=127;	grey++;		}
                             }
                         }
                         is_clean = grey == 4 || black == 4 || ( grey == 0 && black == 0 );
@@ -2391,6 +2303,7 @@ namespace TA3D
 
         for (String::List::const_iterator it = file_list.begin(); it != file_list.end(); ++it)
         {
+            LOG_DEBUG("loading sky : " << *it);
             SKY_DATA *sky_data = new SKY_DATA;
             sky_data->load_tdf(*it);
 

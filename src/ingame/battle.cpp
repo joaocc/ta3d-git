@@ -17,7 +17,6 @@
 #include "../languages/i18n.h"
 #include <list>
 #include <vector>
-#include "../jpeg/ta3d_jpg.h"
 #include "menus/statistics.h"
 #include "../misc/math.h"
 #include "../sounds/manager.h"
@@ -40,41 +39,6 @@
 #endif
 
 #define PICK_TOLERANCE  5
-
-
-
-int anim_cursor(const int type)
-{
-    return (type == -1)
-        ? ((msec_timer-start) / 100) % cursor[cursor_type].nb_bmp
-        : ((msec_timer-start) / 100) % cursor[type].nb_bmp;
-}
-
-
-void draw_cursor()
-{
-    int curseur = anim_cursor();
-    if (curseur < 0 || curseur >= cursor[cursor_type].nb_bmp)
-    {
-        curseur = 0;
-        start = msec_timer;
-    }
-    float dx = cursor[cursor_type].ofs_x[curseur];
-    float dy = cursor[cursor_type].ofs_y[curseur];
-    float sx = cursor[cursor_type].bmp[curseur]->w;
-    float sy = cursor[cursor_type].bmp[curseur]->h;
-    gfx->set_color(0xFFFFFFFF);
-    gfx->set_alpha_blending();
-    gfx->drawtexture(cursor[cursor_type].glbmp[curseur],
-                     mouse_x * gfx->SCREEN_W_TO_640 - dx,
-                     mouse_y * gfx->SCREEN_H_TO_480 - dy,
-                     mouse_x * gfx->SCREEN_W_TO_640 - dx + sx,
-                     mouse_y * gfx->SCREEN_H_TO_480 - dy + sy);
-    gfx->unset_alpha_blending();
-}
-
-
-
 
 namespace TA3D
 {
@@ -143,20 +107,20 @@ namespace TA3D
         weapon_engine_thread_sync = 0;
         particle_engine_thread_sync = 0;
 
-        units.Start();			// Start the Unit Engine
+        units.start();			// Start the Unit Engine
 
         particle_engine.set_data( map->ota_data.gravity, map->wind_vec);
-        particle_engine.Start();		// Start the particle engine
+        particle_engine.start();		// Start the particle engine
 
         // Start the weapon engine
         weapons.set_data(map.get());
         features.set_data(map->wind_vec);		// NB: the feature engine runs in the weapon thread to avoid having too much thread to synchronise
-        weapons.Start();
+        weapons.start();
 
         /*---------------------------- players management --------------------------*/
 
         players.set_map(map.get());
-        players.Start();
+        players.start();
 
 		// Here we go Commander !
         LOG_INFO(LOG_PREFIX_BATTLE << "*** The game has started - Good luck Commander ! ***");
@@ -607,7 +571,7 @@ namespace TA3D
                         int py = ((int)(cur_pos.z + map->map_h_d)) >> 3;
 
                         if (px >= 0 && px < map->bloc_w_db && py >= 0 && py < map->bloc_h_db
-							&& (map->view_map->line[py>>1][px>>1] & (1<<players.local_human_id)) )
+							&& (SurfaceByte(map->view_map, px>>1, py>>1) & (1<<players.local_human_id)) )
                         {
                             int idx = -map->map_data[py][px].unit_idx - 2;				// Basic check
                             if (idx<0 || features.feature[idx].type<0)
@@ -1160,7 +1124,7 @@ namespace TA3D
                     Vector3D cur_pos(cursorOnMap(cam, *map, IsOnMinimap));
                     int px = ((int)(cur_pos.x + map->map_w_d)) >> 3;
                     int py = ((int)(cur_pos.z + map->map_h_d)) >> 3;
-                    if (px >= 0 && px < map->bloc_w_db && py >= 0 && py < map->bloc_h_db && (map->view_map->line[py >> 1][px >> 1] & (1 << players.local_human_id)))
+                    if (px >= 0 && px < map->bloc_w_db && py >= 0 && py < map->bloc_h_db && (SurfaceByte(map->view_map, px >> 1, py >> 1) & (1 << players.local_human_id)))
                     {
                         int idx = -map->map_data[py][px].unit_idx - 2;				// Basic check
                         if (idx < 0 || features.feature[idx].type < 0)
@@ -1444,10 +1408,9 @@ namespace TA3D
             // Dessine les reflets sur l'eau
             if (g_useProgram && g_useFBO && lp_CONFIG->water_quality>=2 && map->water && !map->ota_data.lavaworld && !reflection_drawn_last_time)
             {
-
                 reflection_drawn_last_time = true;
 
-                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);		// Efface l'écran
+                gfx->clearAll();		// Clear screen
 
                 glViewport(0, 0, 512, 512);
 
@@ -1530,13 +1493,13 @@ namespace TA3D
                         glPolygonMode (GL_FRONT_AND_BACK, GL_FILL);
 
                     // Dessine les éléments "2D" / "sprites"
-                    features.draw(refcam);
+                    features.draw();
                     // Dessine les unités / draw units
-                    units.draw(refcam, map.get(), false, true, false, lp_CONFIG->height_line);
+                    units.draw(map.get(), false, true, false, lp_CONFIG->height_line);
 
                     glDisable(GL_CULL_FACE);
                     // Dessine les objets produits par les armes / draw weapons
-                    weapons.draw(&refcam, map.get());
+                    weapons.draw(map.get());
                     // Dessine les particules
                     particle_engine.draw(&refcam, map->map_w, map->map_h, map->bloc_w, map->bloc_h, map->view);
                     // Effets spéciaux en surface / fx above water
@@ -1567,9 +1530,67 @@ namespace TA3D
             else
                 reflection_drawn_last_time = false;
 
+            if (lp_CONFIG->shadow_quality > 0 && cam.rpos.y <= gfx->low_def_limit)
+            {
+                switch (lp_CONFIG->shadow_quality)
+                {
+                case 2:                     // Render the shadow map
+                    gfx->setShadowMapMode(true);
+                    gfx->SetDefState();
+                    gfx->renderToTextureDepth( gfx->get_shadow_map() );
+                    gfx->clearDepth();
+                    pSun.SetView( map->get_visible_volume() );
+
+                    // We'll need this matrix later (when rendering with shadows)
+                    gfx->readShadowMapProjectionMatrix();
+
+                    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+                    glDisable(GL_FOG);
+                    glShadeModel (GL_FLAT);
+
+                    glEnable(GL_POLYGON_OFFSET_FILL);
+                    glPolygonOffset(3.0f, 1.0f);
+
+                    // Render all visible features from light's point of view
+                    for(int i=0;i<features.list_size;i++)
+                        features.feature[features.list[i]].draw = true;
+                    features.draw(true);
+
+                    glEnable(GL_POLYGON_OFFSET_FILL);
+                    glPolygonOffset(3.0f, 1.0f);
+                    // Render all visible units from light's point of view
+                    units.draw(map.get(), true, false, true, false);
+                    units.draw(map.get(), false, false, true, false);
+
+                    // Render all visible weapons from light's point of view
+                    weapons.draw(map.get(), true);
+                    weapons.draw(map.get(), false);
+
+                    glDisable(GL_POLYGON_OFFSET_FILL);
+                    glPolygonOffset(0.0f, 0.0f);
+
+                    gfx->renderToTextureDepth(0);
+                    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+                    glActiveTextureARB(GL_TEXTURE7_ARB);
+                    glEnable(GL_TEXTURE_2D);
+                    glBindTexture(GL_TEXTURE_2D, gfx->get_shadow_map());
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE_ARB, GL_COMPARE_R_TO_TEXTURE);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC_ARB, GL_LEQUAL);
+                    glTexParameteri(GL_TEXTURE_2D, GL_DEPTH_TEXTURE_MODE_ARB, GL_INTENSITY);
+
+                    glActiveTextureARB(GL_TEXTURE0_ARB);
+                    gfx->setShadowMapMode(false);
+                    break;
+                };
+            }
+
             gfx->SetDefState();
             glClearColor(FogColor[0],FogColor[1],FogColor[2],FogColor[3]);
-            glClear(GL_DEPTH_BUFFER_BIT);		// Clear screen
+            if (pSkyIsSpherical)
+                gfx->clearDepth();		// Clear screen
+            else
+                gfx->clearAll();
 
             cam.setView();
 
@@ -1638,16 +1659,16 @@ namespace TA3D
             if (lp_CONFIG->wireframe)
                 glPolygonMode (GL_FRONT_AND_BACK, GL_FILL);
 
-            features.draw(cam);		// Dessine les éléments "2D"
+            features.draw();		// Dessine les éléments "2D"
 
             /*----------------------------------------------------------------------------------------------*/
 
             // Dessine les unités sous l'eau / Draw units which are under water
             if (cam.rpos.y <= gfx->low_def_limit)
-                units.draw(cam, map.get(), true, false, true, lp_CONFIG->height_line);
+                units.draw(map.get(), true, false, true, lp_CONFIG->height_line);
 
             // Dessine les objets produits par les armes sous l'eau / Draw weapons which are under water
-            weapons.draw(&cam, map.get(), true);
+            weapons.draw(map.get(), true);
 
             if (map->water)
             {
@@ -1736,7 +1757,7 @@ namespace TA3D
                         water_pass1.setvar2f("factor",water_obj->w / map->map_w, water_obj->w / map->map_h);
                     }
 
-                    cam.setView();
+                    cam.setView(true);
                     glTranslatef(0.0f,map->sealvl,0.0f);
                     water_obj->draw(t, cam.rpos.x, cam.rpos.z, true);
 
@@ -1758,7 +1779,7 @@ namespace TA3D
 
                     water_pass2.on();
 
-                    cam.setView();
+                    cam.setView(true);
                     glTranslatef(0.0f,map->sealvl,0.0f);
                     water_obj->draw(t,cam.rpos.x,cam.rpos.z,true);
 
@@ -1801,7 +1822,7 @@ namespace TA3D
                     glDisable(GL_TEXTURE_2D);
                     glClientActiveTextureARB(GL_TEXTURE0_ARB);
 
-                    cam.setView();
+                    cam.setView(true);
                     glTranslatef(0.0f,map->sealvl,0.0f);
                     water_obj->draw(t,cam.rpos.x,cam.rpos.z,true);
 
@@ -1983,7 +2004,7 @@ namespace TA3D
                     water_simulator_shader4.setvar1f("t",t);
                     water_simulator_shader4.setvar2f("factor",water_obj->w / map->map_w, water_obj->w / map->map_h);
 
-                    cam.setView();
+                    cam.setView(true);
                     glTranslatef(0.0f,map->sealvl,0.0f);
                     water_obj->draw(t, cam.rpos.x, cam.rpos.z, true);
 
@@ -2001,7 +2022,7 @@ namespace TA3D
 
                     water_pass2.on();
 
-                    cam.setView();
+                    cam.setView(true);
                     glTranslatef(0.0f,map->sealvl,0.0f);
                     water_obj->draw(t,cam.rpos.x,cam.rpos.z,true);
 
@@ -2015,7 +2036,7 @@ namespace TA3D
                     glEnable(GL_TEXTURE_2D);
                     glBindTexture(GL_TEXTURE_2D,map->low_tex);
 
-                    cam.setView();
+                    cam.setView(true);
                     glTranslatef( 0.0f, map->sealvl, map->sea_dec);
                     water_obj->draw(t,cam.rpos.x,cam.rpos.z,false);
 
@@ -2038,7 +2059,7 @@ namespace TA3D
                     glActiveTextureARB(GL_TEXTURE0_ARB);
                     glDisable(GL_TEXTURE_2D);
 
-                    cam.setView();
+                    cam.setView(true);
                     glTranslatef(0.0f,map->sealvl,0.0f);
                     water_obj->draw(t,cam.rpos.x,cam.rpos.z,true);
 
@@ -2118,6 +2139,7 @@ namespace TA3D
                     water_simulator_reflec.off();
                 }
                 gfx->ReInitAllTex(true);
+                cam.setView();
             }
 
             if (build >= 0 && !IsOnGUI)	// Display the building we want to build (with nice selection quads)
@@ -2274,17 +2296,18 @@ namespace TA3D
                 }
             }
 
-
+            cam.setView();
             // Dessine les unités non encore dessinées / Draw units which have not been drawn
-            units.draw(cam, map.get(), false, false, true, lp_CONFIG->height_line);
+            units.draw(map.get(), false, false, true, lp_CONFIG->height_line);
 
             // Dessine les objets produits par les armes n'ayant pas été dessinés / Draw weapons which have not been drawn
-            weapons.draw(&cam, map.get(), false);
+            weapons.draw(map.get(), false);
 
-            if (lp_CONFIG->shadow && cam.rpos.y<=gfx->low_def_limit)
+            if (lp_CONFIG->shadow_quality > 0 && cam.rpos.y <= gfx->low_def_limit)
             {
-                if (lp_CONFIG->shadow_quality <= 1)
+                switch (lp_CONFIG->shadow_quality)
                 {
+                case 1:                     // Stencil Shadowing (shadow volumes)
                     if (rotate_light)
                     {
                         pSun.Dir.x = -1.0f;
@@ -2296,7 +2319,7 @@ namespace TA3D
                         Dir.z = sinf(light_angle);
                         Dir.unit();
                         pSun.Dir = -Dir;
-                        units.draw_shadow(cam, Dir, map.get());
+                        units.draw_shadow(Dir, map.get());
                     }
                     else
                     {
@@ -2304,42 +2327,12 @@ namespace TA3D
                         pSun.Dir.y = 1.0f;
                         pSun.Dir.z = 1.0f;
                         pSun.Dir.unit();
-                        units.draw_shadow(cam, -pSun.Dir, map.get());
+                        units.draw_shadow(-pSun.Dir, map.get());
                     }
-                }
-                else
-                {
-                    float alpha = 1.0f - expf((1.0f / lp_CONFIG->shadow_quality) * logf(0.5f));
-                    Vector3D Dir;
-                    if (rotate_light)
-                    {
-                        pSun.Dir.x = -1.0f;
-                        pSun.Dir.y = 1.0f;
-                        pSun.Dir.z = 1.0f;
-                        pSun.Dir.unit();
-                        Dir = -pSun.Dir;
-                        Dir.x = cosf(light_angle);
-                        Dir.z = sinf(light_angle);
-                        Dir.unit();
-                        pSun.Dir = -Dir;
-                    }
-                    else
-                    {
-                        pSun.Dir.x = -1.0f;
-                        pSun.Dir.y = 1.0f;
-                        pSun.Dir.z = 1.0f;
-                        pSun.Dir.unit();
-                        Dir = -pSun.Dir;
-                    }
-                    for (int i = 0; i < lp_CONFIG->shadow_quality; ++i)
-                    {
-                        Vector3D RDir(Dir);
-                        RDir.x += cosf(i * PI * 2.0f / lp_CONFIG->shadow_quality) * lp_CONFIG->shadow_r;
-                        RDir.z += sinf(i * PI * 2.0f / lp_CONFIG->shadow_quality) * lp_CONFIG->shadow_r;
-                        RDir.unit();
-                        units.draw_shadow(cam, RDir, map.get(), alpha);
-                    }
-                }
+                    break;
+                case 2:                     // Shadow mapping
+                    break;
+                };
             }
 
             particle_engine.draw(&cam,map->map_w,map->map_h,map->bloc_w,map->bloc_h,map->view);	// Dessine les particules
@@ -3240,12 +3233,12 @@ namespace TA3D
                             if (units.unit[i].mission->flags & MISSION_FLAG_COMMAND_FIRE)	flags += "COMMAND_FIRE; ";
                             if (units.unit[i].mission->flags & MISSION_FLAG_MOVE)	flags += "MOVE; ";
                             if (units.unit[i].mission->flags & MISSION_FLAG_REFRESH_PATH)	flags += "REFRESH_PATH; ";
-                            y += gfx->normal_font.height();
+                            y += gfx->normal_font->height();
                             gfx->print(gfx->normal_font,128.0f,y,0.0f,0xFFFFFFFF,format("FLAGS: %s", flags.c_str()));
                         }
                         else
                             gfx->print(gfx->normal_font,128.0f,y,0.0f,0xFFFFFFFF,format("MISSION: NONE"));
-                        y += gfx->normal_font.height();
+                        y += gfx->normal_font->height();
                     }
                     units.unit[i].unlock();
                 }
@@ -3259,11 +3252,11 @@ namespace TA3D
                 if (value.find('.') != String::npos)
                     value.resize(value.find('.') + 2);
                 if (show_timefactor > 0.5f)
-                    gfx->print( gfx->TA_font, (gfx->width - (int)gfx->TA_font.length(value))>>1, SCREEN_H-80, 0.0f, 0xFFFFFFFF, value);
+                    gfx->print( gfx->TA_font, (gfx->width - (int)gfx->TA_font->length(value))>>1, SCREEN_H-80, 0.0f, 0xFFFFFFFF, value);
                 else
                 {
                     uint32 c = (uint32)(511.0f * show_timefactor) * 0x01010101;
-                    gfx->print( gfx->TA_font, (gfx->width - (int)gfx->TA_font.length(value))>>1, SCREEN_H-80, 0.0f, c, value);
+                    gfx->print( gfx->TA_font, (gfx->width - (int)gfx->TA_font->length(value))>>1, SCREEN_H-80, 0.0f, c, value);
                 }
                 show_timefactor -= dt;
             }
@@ -3273,7 +3266,7 @@ namespace TA3D
             String cmd;
             // Draw the console
             if (!shoot || video_shoot)
-                cmd = console.draw(gfx->TA_font, dt, gfx->TA_font.height());
+                cmd = console.draw(gui_font, dt);
 
             // Informations about FPS
             if (lp_CONFIG->showfps)
@@ -3300,21 +3293,12 @@ namespace TA3D
 
             if (shoot)
             {
-                BITMAP *shoot_bmp = create_bitmap_ex(32,SCREEN_W,SCREEN_H);
-                blit(screen,shoot_bmp,0,0,0,0,SCREEN_W,SCREEN_H);
-                char nom[100];
-                nom[0]=0;
-                strcat(nom,"ta3d-shoot000000");
-                nom[strlen(nom)-6]+=(nb_shoot/100000)%10;
-                nom[strlen(nom)-5]+=(nb_shoot/10000)%10;
-                nom[strlen(nom)-4]+=(nb_shoot/1000)%10;
-                nom[strlen(nom)-3]+=(nb_shoot/100)%10;
-                nom[strlen(nom)-2]+=(nb_shoot/10)%10;
-                nom[strlen(nom)-1]+=nb_shoot%10;
+                SDL_Surface *shoot_bmp = gfx->create_surface_ex(24,SCREEN_W,SCREEN_H);
+                glReadPixels(0, 0, SCREEN_W, SCREEN_H, GL_BGR, GL_UNSIGNED_BYTE, shoot_bmp->pixels);
+                String nom = format("ta3d-shoot%.6d.tga", nb_shoot);
                 nb_shoot = (nb_shoot+1)%1000000;
-                strcat(nom,".jpg");
-                save_jpg_ex((TA3D::Paths::Screenshots + nom).c_str(), shoot_bmp, NULL, 75, JPG_SAMPLING_411, NULL);
-                destroy_bitmap(shoot_bmp);
+                save_bitmap(TA3D::Paths::Screenshots + nom, shoot_bmp);
+                SDL_FreeSurface(shoot_bmp);
                 shoot = false;
             }
 
@@ -3332,11 +3316,11 @@ namespace TA3D
                     else if (params[0] == "fps_off") lp_CONFIG->showfps=false;				// Cache le nombre d'images/seconde
                     else if (params[0] == "zshoot") // Prend une capture d'écran(tampon de profondeur seulement)
                     {
-                        BITMAP *bmp=create_bitmap_ex(32,SCREEN_W,SCREEN_H);
-                        clear(bmp);
-                        glReadPixels(0,0,SCREEN_W,SCREEN_H,GL_DEPTH_COMPONENT,GL_INT,bmp->line[0]);
-                        save_bitmap( (TA3D::Paths::Screenshots + "z.tga").c_str(),bmp,NULL);
-                        destroy_bitmap(bmp);
+                        SDL_Surface *bmp = gfx->create_surface_ex(32,SCREEN_W,SCREEN_H);
+                        SDL_FillRect(bmp, NULL, 0);
+                        glReadPixels(0,0,SCREEN_W,SCREEN_H,GL_DEPTH_COMPONENT,GL_INT,bmp->pixels);
+//                        save_bitmap( TA3D::Paths::Screenshots + "z.tga",bmp);
+                        SDL_FreeSurface(bmp);
                     }
                     else if ((params[0] == "enable" || params[0] == "disable") && params.size() > 1)
                     {
@@ -3370,6 +3354,8 @@ namespace TA3D
                         water_pass2.load("shaders/water_pass2.frag","shaders/water_pass2.vert");
                         map->detail_shader.destroy();
                         map->detail_shader.load( "shaders/details.frag", "shaders/details.vert");
+                        map->shadow2_shader.destroy();
+                        map->shadow2_shader.load("shaders/map_shadow.frag", "shaders/map_shadow.vert");
                         water_simulator_shader.destroy();
                         water_simulator_shader.load("shaders/water_simulator.frag","shaders/water_simulator.vert");
                         water_simulator_shader2.destroy();
@@ -3380,6 +3366,8 @@ namespace TA3D
                         water_simulator_shader4.load("shaders/water_simulator4.frag","shaders/water_simulator4.vert");
                         water_simulator_reflec.destroy();
                         water_simulator_reflec.load("shaders/water_sim_reflec.frag","shaders/water.vert");
+                        gfx->model_shader.destroy();
+                        gfx->model_shader.load("shaders/3do_shadow.frag", "shaders/3do_shadow.vert");
                     }
                     else if (params.size() == 3 && params[0] == "show" && params[1] == "mission" && params[2] == "info")	show_mission_info ^= true;
                     else if (params.size() == 2 && params[0] == "view" && params[1] == "debug")	view_dbg^=true;
@@ -3388,15 +3376,13 @@ namespace TA3D
                     else if (params.size() == 2 && params[0] == "internal" && params[1] == "idx") internal_idx^=true;		// Show/Hide unit indexes in unit array
                     else if (params[0] == "exit") done=true;					// Quitte le programme
                     else if (params[0] == "wireframe") 	lp_CONFIG->wireframe^=true;
-                    else if (params[0] == "priority" && params.size() == 2) lp_CONFIG->priority_level = atoi( params[1].c_str());
-                    else if ( params.size() == 3 && params[0] == "water" && params[1] == "quality") lp_CONFIG->water_quality = atoi( params[2].c_str())%6;
-                    else if (params[0] == "shadow" && params.size() == 3) {
+                    else if (params[0] == "priority" && params.size() == 2) lp_CONFIG->priority_level = params[1].toInt32();
+                    else if ( params.size() == 3 && params[0] == "water" && params[1] == "quality") lp_CONFIG->water_quality = params[2].toInt32() % 6;
+                    else if (params[0] == "shadow" && params.size() == 3)
+                    {
                         if (params[1] == "quality")
-                            lp_CONFIG->shadow_quality = atoi( params[2].c_str());
-                        else
-                            if (params[1] == "ray") lp_CONFIG->shadow_r = atof( params[2].c_str());
+                            lp_CONFIG->shadow_quality = params[2].toInt32();
                     }
-                    else if (params[0] == "shadow" && params.size() == 1) lp_CONFIG->shadow^=true;
                     else if (params[0] == "details")	lp_CONFIG->detail_tex ^= true;
                     else if (params[0] == "particle")	lp_CONFIG->particle^=true;
                     else if (params.size() == 2 && params[0] == "explosion" && params[1] == "particles")	lp_CONFIG->explosion_particles^=true;
@@ -3406,27 +3392,30 @@ namespace TA3D
                     else if (params.size() == 2 && params[0] == "rotate" && params[1] == "light") rotate_light^=true;
                     else if (params[0] == "shake")
                         cam.setShake(1.0f, 32.0f);
-                    else if (params[0] == "freecam") {
+                    else if (params[0] == "freecam")
+                    {
                         freecam ^= true;
                         if (!freecam)
                             r2=0.0f;
                     }
-                    else if (params[0] == "fps_limit" && params.size() == 2) {
-                        speed_limit = atoi( params[1].c_str());
+                    else if (params[0] == "fps_limit" && params.size() == 2)
+                    {
+                        speed_limit = params[1].toInt32();
                         if (speed_limit == 0.0f)
                             speed_limit = -1.0f;
                         delay = 1.0f / speed_limit;
                     }
-                    else if (params[0] == "spawn" && params.size() >= 2) {
+                    else if (params[0] == "spawn" && params.size() >= 2)
+                    {
                         int unit_type = -1;
                         int player_id = players.local_human_id;
-                        int nb_to_spawn=1;
-                        unit_type = unit_manager.get_unit_index( params[1].c_str());
+                        int nb_to_spawn = 1;
+                        unit_type = unit_manager.get_unit_index( params[1] );
                         if (params.size() >= 3)
                         {
-                            player_id = atoi( params[2].c_str());
+                            player_id = params[2].toInt32();
                             if (params.size() >= 4)
-                                nb_to_spawn = atoi( params[3].c_str());
+                                nb_to_spawn = params[3].toInt32();
                         }
                         ThreadSynchroniser->lock();		// Make sure we won't destroy something we mustn't
                         units.lock();
@@ -3483,11 +3472,12 @@ namespace TA3D
                         ThreadSynchroniser->unlock();
                     }
                     else if (params[0] == "timefactor" && params.size() == 2)
-                        lp_CONFIG->timefactor = atof( params[1].c_str());
-                    else if (params[0] == "addhp" && params.size() == 2) {
+                        lp_CONFIG->timefactor = params[1].toFloat();
+                    else if (params[0] == "addhp" && params.size() == 2)
+                    {
                         if (selected) // Sur les unités sélectionnées
                         {
-                            int value = atoi( params[1].c_str());
+                            int value = params[1].toInt32();
                             units.lock();
                             for (unsigned int e = 0; e < units.index_list_size; ++e)
                             {
@@ -3507,7 +3497,8 @@ namespace TA3D
                             units.unlock();
                         }
                     }
-                    else if (params[0] == "deactivate") {
+                    else if (params[0] == "deactivate")
+                    {
                         if (selected) // Sur les unités sélectionnées
                         {
                             units.lock();
@@ -3520,7 +3511,8 @@ namespace TA3D
                             units.unlock();
                         }
                     }
-                    else if (params[0] == "activate") {
+                    else if (params[0] == "activate")
+                    {
                         if (selected) // Sur les unités sélectionnées
                         {
                             units.lock();
@@ -3533,7 +3525,8 @@ namespace TA3D
                             units.unlock();
                         }
                     }
-                    else if (params[0] == "reset_script") {							// Réinitialise les scripts
+                    else if (params[0] == "reset_script")							// Réinitialise les scripts
+                    {
                         if (selected) // Sur les unités sélectionnées
                         {
                             units.lock();
@@ -3548,7 +3541,8 @@ namespace TA3D
                             units.unlock();
                         }
                     }
-                    else if (params[0] == "unitinfo") {
+                    else if (params[0] == "unitinfo")
+                    {
                         if (selected && cur_sel != -1)	// Sur les unités sélectionnées
                         {
                             const char *unit_info[]={"ACTIVATION","STANDINGMOVEORDERS","STANDINGFIREORDERS","HEALTH","INBUILDSTANCE","BUSY","PIECE_XZ","PIECE_Y","UNIT_XZ","UNIT_Y","UNIT_HEIGHT","XZ_ATAN","XZ_HYPOT","ATAN",
@@ -3567,7 +3561,8 @@ namespace TA3D
                             units.unlock();
                         }
                     }
-                    else if (params[0] == "kill") {							// Détruit les unités sélectionnées
+                    else if (params[0] == "kill")							// Détruit les unités sélectionnées
+                    {
                         if (selected) // Sur les unités sélectionnées
                         {
                             units.lock();
@@ -3575,7 +3570,8 @@ namespace TA3D
                             {
                                 int i = units.idx_list[e];
                                 units.unlock();
-                                if ((units.unit[i].flags & 1) && units.unit[i].owner_id==players.local_human_id && units.unit[i].sel) {
+                                if ((units.unit[i].flags & 1) && units.unit[i].owner_id==players.local_human_id && units.unit[i].sel)
+                                {
                                     units.kill(i, map.get(), e);
                                     --e;
                                 }
@@ -3586,7 +3582,8 @@ namespace TA3D
                             cur_sel=-1;
                         }
                     }
-                    else if (params[0] == "shootall") {							// Destroy enemy units
+                    else if (params[0] == "shootall")							// Destroy enemy units
+                    {
                         units.lock();
                         for (int e = 0; e < units.max_unit; ++e)
                         {
@@ -3601,10 +3598,11 @@ namespace TA3D
                         }
                         units.unlock();
                     }
-                    else if (params[0] == "script" && params.size() == 2) {							// Force l'éxecution d'un script
+                    else if (params[0] == "script" && params.size() == 2)							// Force l'éxecution d'un script
+                    {
                         if (selected) // Sur les unités sélectionnées
                         {
-                            int id = atoi( params[1].c_str());
+                            int id = params[1].toInt32();
                             units.lock();
                             for (int e = 0; e < units.index_list_size; ++e)
                             {
@@ -3617,12 +3615,13 @@ namespace TA3D
                     }
                     else if (params[0] == "pause")								// Toggle pause mode
                         lp_CONFIG->pause ^= true;
-                    else if (params[0] == "give") {							// Give resources to player_id
+                    else if (params[0] == "give")							// Give resources to player_id
+                    {
                         bool success = false;
                         if (params.size() == 4)
                         {
-                            int player_id = atoi( params[2].c_str());
-                            int amount = atoi( params[3].c_str());
+                            int player_id = params[2].toInt32();
+                            int amount = params[3].toInt32();
                             if (player_id >= 0 && player_id < players.nb_player)
                             {
                                 if (params[1] == "metal" || params[1] == "both")
@@ -3689,11 +3688,11 @@ namespace TA3D
 
         reset_mouse();
 
-        players.DestroyThread();				// Shut down the Players thread
+        players.destroyThread();				// Shut down the Players thread
         players.stop_threads();
-        weapons.DestroyThread();				// Shut down the Weapon Engine
-        units.DestroyThread();					// Shut down the Unit Engine
-        particle_engine.DestroyThread();		// Shut down the Particle Engine
+        weapons.destroyThread();				// Shut down the Weapon Engine
+        units.destroyThread();					// Shut down the Unit Engine
+        particle_engine.destroyThread();		// Shut down the Particle Engine
 
         sky_obj.destroy();
 

@@ -7,8 +7,7 @@
 #include "gfx.h"
 #include "../misc/paths.h"
 #include "../logs/logs.h"
-#include <allegro/internal/aintern.h>
-
+#include <fstream>
 
 
 
@@ -17,149 +16,208 @@ namespace TA3D
 
 
 
-    GfxFont::GfxFont()
-        : pAl(NULL), pGl(NULL), size(1.0f), clear(false)
-    {}
-
-    void GfxFont::init()
+    Font::Font()
     {
-        pAl = NULL;
-        pGl = NULL;
-        size = 1.0f;
-        clear = false;
-    }
-
-
-
-    void GfxFont::load(const char* filename, const float s)
-    {
-        size = s;
-        pAl = load_font( filename, NULL, NULL );
-        if (pAl == NULL ) {
-            throw cError( "GfxFont::load()", "font could not be loaded, pAl = NULL.", true );
-            return;
-        }
-        pGl = allegro_gl_convert_allegro_font_ex(pAl, AGL_FONT_TYPE_TEXTURED, -1.0f, GL_RGBA8);
-        if(NULL == pGl)
-        {
-            throw cError( "GfxFont::load()", "font could not be converted to GL font, pGl = NULL.", true );
-        }
-    }
-
-
-
-    void GfxFont::load_gaf_font(const char *filename, const float s)
-    {
-        LOG_DEBUG("Loading GAF font: `" << filename << "`...");
-        size = s;
-        byte *data = HPIManager->PullFromHPI(filename);
-        if(data)
-        {
-            Gaf::Animation gafFont;
-            gafFont.loadGAFFromRawData(data);
-            int h = 0, mx = 0, my = 0;
-            for (int i = 0; i < gafFont.nb_bmp; ++i)
-            {
-                if (abs( gafFont.ofs_x[i]) > 50 || abs( gafFont.ofs_y[i]) > 50)
-                    continue;
-                if (-gafFont.ofs_x[i] < mx)    mx = -gafFont.ofs_x[i];
-                if (-gafFont.ofs_y[i] < my)    my = -gafFont.ofs_y[i];
-                if (gafFont.bmp[i]->h > h)     h = gafFont.bmp[i]->h;
-            }
-            my += 2;
-            h -= 2;
-
-            FONT_COLOR_DATA	*fc = (FONT_COLOR_DATA*) malloc(sizeof(FONT_COLOR_DATA));
-            fc->begin = 0;
-            fc->end = gafFont.nb_bmp;
-            fc->bitmaps = (BITMAP**) malloc(sizeof(BITMAP*) * gafFont.nb_bmp);
-            fc->next = NULL;
-            for (int i = 0 ; i < gafFont.nb_bmp ; ++i)
-            {
-                fc->bitmaps[ i ] = create_bitmap_ex( 32, gafFont.bmp[ i ]->w, h);
-                clear_to_color( fc->bitmaps[ i ], 0xFF00FF );
-                if (i != 32 )		// Spaces must remain blank
-                    blit( gafFont.bmp[ i ], fc->bitmaps[ i ], 0,0, -gafFont.ofs_x[ i ] - mx, -gafFont.ofs_y[ i ] - my, gafFont.bmp[ i ]->w, gafFont.bmp[ i ]->h );
-                for (int y = 0 ; y < fc->bitmaps[ i ]->h ; y++ )
-                {
-                    for (int x = 0 ; x < fc->bitmaps[ i ]->w ; ++x)
-                    {
-                        if(getpixel(fc->bitmaps[ i ], x, y ) == 0)
-                            putpixel(fc->bitmaps[ i ], x, y, 0xFF00FF);
-                    }
-                }
-            }
-            delete[] data;
-            pAl = (FONT*) malloc( sizeof(FONT));
-            pAl->data = fc;
-            pAl->height = h;
-            pAl->vtable = font_vtable_color;
-        }
-        else 
-        {
-            pAl = NULL;
-            throw cError( "GfxFont::load_gafFont()", "file could not be read, data = NULL.", true );
-            return;
-        }
-
-        pGl = allegro_gl_convert_allegro_font_ex(pAl,AGL_FONT_TYPE_TEXTURED,-1.0f,GL_RGBA8);
-        if(!pGl)
-        {
-            throw cError( "GfxFont::load_gafFont()", "font could not be converted to GL font, pGl = NULL.", true );
-        }
-    }
-
-
-    void GfxFont::destroy()
-    {
-        if (pAl)
-            destroy_font(pAl);
-        if (pGl)
-            allegro_gl_destroy_font(pGl);
         init();
     }
 
-    void GfxFont::copy( FONT *fnt, const float s)
+    void Font::init()
     {
-        size = s;
-        pAl = extract_font_range(font, -1, -1);
-        if (NULL == pAl)
-        {
-            throw cError( "GfxFont::copy()", "font could not be copied, pAl = NULL.", true );
-            return;
-        }
-        pGl = allegro_gl_convert_allegro_font_ex(pAl,AGL_FONT_TYPE_TEXTURED,-1.0f,GL_RGBA8);
-        if (NULL == pGl)
-        {
-            throw cError( "GfxFont::copy()", "font could not be converted to GL font, pGl = NULL.", true );
-        }
+        lock();
+        font = NULL;
+        unlock();
     }
 
-
-    BITMAP* GFX::LoadMaskedTextureToBmp(const String& file, const String& filealpha)
+    void Font::print(float x, float y, float z, const String &text)
     {
-        // Load the texture (32Bits)
-        set_color_depth(32);
-        BITMAP* bmp = gfx->load_image(file);
-        LOG_ASSERT(bmp != NULL);
+        MutexLocker locker(pMutex);
+        if (font == NULL)   return;
 
-        // Load the mask
-        set_color_depth(8);
-        BITMAP* alpha = gfx->load_image(filealpha);
-        LOG_ASSERT(alpha != NULL);
-
-        // Apply the mask, pixel by pixel
-        set_color_depth(32);
-        for (int y = 0; y < bmp->h; ++y)
-        {
-            for (int x = 0; x < bmp->w; ++x)
-                bmp->line[y][(x << 2) + 3] = alpha->line[y][x];
-        }
-
-        destroy_bitmap(alpha);
-        return bmp;
+        glScalef(1.0f, -1.0f, 1.0f);
+        font->Render( text.c_str(), -1, FTPoint(x, -(y + 0.5f * (-font->Descender() + font->Ascender())), z), FTPoint(), FTGL::RENDER_ALL);
+        glScalef(1.0f, -1.0f, 1.0f);
     }
 
+    void Font::destroy()
+    {
+        lock();
+        if (font)
+            delete font;
+        unlock();
+        init();
+    }
 
+    float Font::length(const String &txt)
+    {
+        if (txt.size() == 0)    return 0.0f;
+        if (txt[txt.size()-1] == ' ')
+            return length(txt + "_") - length("_");
+        MutexLocker locker(pMutex);
+        if (font == NULL)
+            return 0.0f;
+#ifdef __FTGL__lower__
+        FTBBox box = font->BBox( txt.c_str() );
+        return fabsf((box.Upper().Xf() - box.Lower().Xf()));
+#else
+        float x0, y0, z0, x1, y1, z1;
+        font->BBox( txt.c_str(), x0, y0, z0, x1, y1, z1 );
+        return fabsf(x0 - x1);
+#endif
+    }
 
+    float Font::height()
+    {
+        MutexLocker locker(pMutex);
+        if (font == NULL)
+            return 0.0f;
+        return font->Ascender();
+    }
+
+    int Font::get_size()
+    {
+        MutexLocker locker(pMutex);
+        if (font)
+            return font->FaceSize();
+        return 0;
+    }
+
+    FontManager font_manager;
+
+    FontManager::FontManager()
+    {
+    }
+
+    FontManager::~FontManager()
+    {
+        destroy();
+    }
+
+    void FontManager::destroy()
+    {
+        for(std::list<Font*>::iterator i = font_list.begin() ; i != font_list.end() ; ++i)
+            delete *i;
+        font_list.clear();
+        font_table.emptyHashTable();
+        font_table.initTable(__DEFAULT_HASH_TABLE_SIZE);
+    }
+
+    String find_font(const String &path, const String &name)
+    {
+        LOG_DEBUG(LOG_PREFIX_FONT << "looking for " << name);
+        String file_path;
+        String::List file_list;
+        String comp_name = String::ToLower(name + ".ttf");
+        if (HPIManager)
+            HPIManager->getFilelist(path + "/*", file_list);
+        else
+            Paths::GlobFiles(file_list, path + "/*", true, true);
+        for(String::List::iterator i = file_list.begin() ; i != file_list.end() && file_path.empty() ; ++i)
+            if (String::ToLower( Paths::ExtractFileName(*i) ) == comp_name)
+                file_path = HPIManager == NULL ? path + "/" + *i : *i;
+
+        if (file_path.empty() && !HPIManager)
+        {
+            String::List dir_list;
+            Paths::GlobDirs(dir_list, path + "/*", true, true);
+            for(String::List::iterator i = dir_list.begin() ; i != dir_list.end() && file_path.empty() ; ++i)
+                if (!StartsWith(*i, "."))
+                    file_path = find_font(path + "/" + *i, name);
+        }
+
+        if (HPIManager && !file_path.empty())       // If we have a font in our VFS, then we have to extract it to a temporary location
+        {                                           // in order to load it with FTGL
+            LOG_DEBUG(LOG_PREFIX_FONT << "font found: " << file_path);
+            uint32 font_size = 0;
+            byte *data = HPIManager->PullFromHPI(file_path, &font_size);
+            if (data)
+            {
+                LOG_DEBUG(LOG_PREFIX_FONT << "creating temporary file for " << name);
+                std::fstream tmp_file;
+                tmp_file.open( (TA3D::Paths::Caches + Paths::ExtractFileName(name) + ".ttf").c_str(), std::fstream::out | std::fstream::binary);
+                if (tmp_file.is_open())
+                {
+                    tmp_file.write((char*)data, font_size);
+                    tmp_file.flush();
+                    tmp_file.close();
+#ifdef TA3D_PLATFORM_WINDOWS
+                    file_path = String::ConvertSlashesIntoAntiSlashes( TA3D::Paths::Caches + Paths::ExtractFileName(name) + ".ttf" );
+#else
+                    file_path = TA3D::Paths::Caches + Paths::ExtractFileName(name) + ".ttf";
+#endif
+                }
+                delete[] data;
+            }
+        }
+
+        return file_path;
+    }
+
+    void Font::load(const String &filename, const int size, const int type)
+    {
+        LOG_DEBUG(LOG_PREFIX_FONT << "destroying Font object");
+        destroy();
+        font = NULL;
+        LOG_DEBUG(LOG_PREFIX_FONT << "creating FTFont object for " << filename);
+        if (!filename.empty())
+            switch(type)
+            {
+            case FONT_TYPE_POLYGON:
+                font = new FTBitmapFont(filename.c_str());
+                break;
+            case FONT_TYPE_BITMAP:
+                font = new FTPixmapFont(filename.c_str());
+                break;
+            case FONT_TYPE_PIXMAP:
+                font = new FTPolygonFont(filename.c_str());
+                break;
+            case FONT_TYPE_TEXTURE:
+            default:
+                font = new FTTextureFont(filename.c_str());
+            };
+        if (font)
+        {
+            LOG_DEBUG(LOG_PREFIX_FONT << "'" << filename << "' loaded");
+            font->FaceSize(size);
+            LOG_DEBUG(LOG_PREFIX_FONT << "face size set");
+            font->UseDisplayList(false);
+            LOG_DEBUG(LOG_PREFIX_FONT << "parameters set '" << filename << "'");
+        }
+        else
+            LOG_ERROR(LOG_PREFIX_FONT << "could not load file : " << filename);
+    }
+
+    Font *FontManager::getFont(String filename, int size, int type)
+    {
+        String key = String::ToLower(filename + format("_%d_%d", type, size));
+
+        if (font_table.exists(key))
+            return font_table.find(key);
+
+        String bak_filename = filename;
+        if (HPIManager)
+            filename = find_font(TA3D_FONT_PATH, filename);
+        else
+            filename = find_font(SYSTEM_FONT_PATH, filename);
+
+        if (filename.empty())
+        {
+            LOG_DEBUG(LOG_PREFIX_FONT << "font not found : " << bak_filename);
+            if (HPIManager)
+                filename = find_font(TA3D_FONT_PATH, "FreeSerif");
+            else
+                filename = find_font(SYSTEM_FONT_PATH, "FreeSerif");
+        }
+
+        LOG_DEBUG(LOG_PREFIX_FONT << "creating new Font object for " << filename);
+        Font *font = new Font();
+        LOG_DEBUG(LOG_PREFIX_FONT << "loading file " << filename);
+        font->load(filename, size, type);
+
+        LOG_DEBUG(LOG_PREFIX_FONT << "inserting " << filename << " into Font tables");
+        font_list.push_back(font);
+        font_table.insertOrUpdate(key, font);
+
+        LOG_DEBUG(LOG_PREFIX_FONT << "Font loader : job done");
+        return font;
+    }
 } // namespace TA3D

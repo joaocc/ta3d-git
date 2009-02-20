@@ -109,19 +109,19 @@ void save_game( const String filename, GameData *game_data )
     for (std::vector<byte>::const_iterator i = game_data->player_control.begin(); i != game_data->player_control.end(); ++i)
         gzputc(file, *i);
     // Player network ID
-    for (std::vector<int>::const_iterator i = game_data->player_network_id.begin(); i != game_data->player_network_id.end(); ++i)
+    for (std::vector<int>::iterator i = game_data->player_network_id.begin(); i != game_data->player_network_id.end(); ++i)
         SAVE(*i);
     // Teams
-    for (std::vector<uint16>::const_iterator i = game_data->team.begin(); i != game_data->team.end(); ++i)
+    for (std::vector<uint16>::iterator i = game_data->team.begin(); i != game_data->team.end(); ++i)
         SAVE(*i);
     // AI Levels
     for (std::vector<byte>::const_iterator i = game_data->ai_level.begin(); i != game_data->ai_level.end(); ++i)
         gzputc(file, *i);
     // Energy
-    for (std::vector<uint32>::const_iterator i = game_data->energy.begin(); i != game_data->energy.end(); ++i)
+    for (std::vector<uint32>::iterator i = game_data->energy.begin(); i != game_data->energy.end(); ++i)
         SAVE(*i);
     // Metal
-    for (std::vector<uint32>::const_iterator i = game_data->metal.begin(); i != game_data->metal.end(); ++i)
+    for (std::vector<uint32>::iterator i = game_data->metal.begin(); i != game_data->metal.end(); ++i)
         SAVE(*i);
 
     // Color map
@@ -238,11 +238,11 @@ void save_game( const String filename, GameData *game_data )
     SAVE( units.max_unit );
     SAVE( units.next_unit_ID );
 
-    for (INGAME_UNITS::RepairPodsList::const_iterator pad_list = units.repair_pads.begin(); units.repair_pads.end() != pad_list; ++pad_list)
+    for (INGAME_UNITS::RepairPodsList::iterator pad_list = units.repair_pads.begin(); units.repair_pads.end() != pad_list; ++pad_list)
     {
         int list_size = pad_list->size();
         SAVE(list_size);
-        for (std::list<uint16>::const_iterator i = pad_list->begin(); pad_list->end() != i; ++i)
+        for (std::list<uint16>::iterator i = pad_list->begin(); pad_list->end() != i; ++i)
             SAVE(*i);
     }
 
@@ -263,12 +263,12 @@ void save_game( const String filename, GameData *game_data )
 
         int g = units.unit[i].s_var->size();
         SAVE( g );
-        for (std::vector<int>::const_iterator f = (units.unit[i].s_var)->begin(); (units.unit[i].s_var)->end() != f; ++f)
+        for (std::vector<int>::iterator f = (units.unit[i].s_var)->begin(); (units.unit[i].s_var)->end() != f; ++f)
             SAVE(*f);
 
         g = units.unit[i].script_val->size();
         SAVE( g );
-        for (std::vector<short>::const_iterator f = (units.unit[i].script_val)->begin(); (units.unit[i].script_val)->end() != f; ++f)
+        for (std::vector<short>::iterator f = (units.unit[i].script_val)->begin(); (units.unit[i].script_val)->end() != f; ++f)
             SAVE(*f);
 
         SAVE( units.unit[i].owner_id );
@@ -468,16 +468,16 @@ void save_game( const String filename, GameData *game_data )
     if (game_data->fog_of_war)      // Save fog of war state
     {
         for (int y = 0 ; y < the_map->view_map->h ; y++)
-            gzwrite(file, the_map->view_map->line[y], (bitmap_color_depth(the_map->view_map) >> 3) * the_map->view_map->w);
+            gzwrite(file, (char*)the_map->view_map->pixels + y * the_map->view_map->pitch, (the_map->view_map->format->BitsPerPixel >> 3) * the_map->view_map->w);
 
         for (int y = 0 ; y < the_map->sight_map->h ; y++)
-            gzwrite(file, the_map->sight_map->line[y], (bitmap_color_depth(the_map->sight_map) >> 3) * the_map->sight_map->w);
+            gzwrite(file, (char*)the_map->sight_map->pixels + y * the_map->sight_map->pitch, (the_map->sight_map->format->BitsPerPixel >> 3) * the_map->sight_map->w);
 
         for (int y = 0 ; y < the_map->radar_map->h ; y++)
-            gzwrite(file, the_map->radar_map->line[y], (bitmap_color_depth(the_map->radar_map) >> 3) * the_map->radar_map->w);
+            gzwrite(file, (char*)the_map->radar_map->pixels + y * the_map->radar_map->pitch, (the_map->radar_map->format->BitsPerPixel >> 3) * the_map->radar_map->w);
 
         for (int y = 0 ; y < the_map->sonar_map->h ; y++)
-            gzwrite(file, the_map->sonar_map->line[y], (bitmap_color_depth(the_map->sonar_map) >> 3) * the_map->sonar_map->w);
+            gzwrite(file, (char*)the_map->sonar_map->pixels + y * the_map->sonar_map->pitch, (the_map->sonar_map->format->BitsPerPixel >> 3) * the_map->sonar_map->w);
     }
 
     gzclose( file );
@@ -1099,16 +1099,16 @@ void load_game( GameData *game_data )
     if (game_data->fog_of_war)      // Load fog of war state
     {
         for (int y = 0 ; y < the_map->view_map->h ; y++)
-            gzread(file, the_map->view_map->line[y], (bitmap_color_depth(the_map->view_map) >> 3) * the_map->view_map->w);
+            gzread(file, (char*)the_map->view_map->pixels + y * the_map->view_map->pitch, (the_map->view_map->format->BitsPerPixel >> 3) * the_map->view_map->w);
 
         for (int y = 0 ; y < the_map->sight_map->h ; y++)
-            gzread(file, the_map->sight_map->line[y], (bitmap_color_depth(the_map->sight_map) >> 3) * the_map->sight_map->w);
+            gzread(file, (char*)the_map->sight_map->pixels + y * the_map->sight_map->pitch, (the_map->sight_map->format->BitsPerPixel >> 3) * the_map->sight_map->w);
 
         for (int y = 0 ; y < the_map->radar_map->h ; y++)
-            gzread(file, the_map->radar_map->line[y], (bitmap_color_depth(the_map->radar_map) >> 3) * the_map->radar_map->w);
+            gzread(file, (char*)the_map->radar_map->pixels + y * the_map->radar_map->pitch, (the_map->radar_map->format->BitsPerPixel >> 3) * the_map->radar_map->w);
 
         for (int y = 0 ; y < the_map->sonar_map->h ; y++)
-            gzread(file, the_map->sonar_map->line[y], (bitmap_color_depth(the_map->sonar_map) >> 3) * the_map->sonar_map->w);
+            gzread(file, (char*)the_map->sonar_map->pixels + y * the_map->sonar_map->pitch, (the_map->sonar_map->format->BitsPerPixel >> 3) * the_map->sonar_map->w);
     }
 
     game_data->saved_file.clear();

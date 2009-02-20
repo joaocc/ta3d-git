@@ -45,31 +45,13 @@ public:
     */
     void clear() { memset(E,0,64); }
 
-    //! \name Operators
-    //@{
-
-    /*!
-    **
-    */
-    const MATRIX_4x4 operator = (const MATRIX_f& b);
-
-    /*!
-    **
-    */
-    const MATRIX_4x4 operator = (const MATRIX& b);
-
-    /*!
-    ** \brief Cast operator (MATRIX_f)
-    */
-    operator MATRIX_f() const;
-
     //@}
 
 public:
     float E[4][4]; // Matrice 4x4
 };
 
-
+typedef MATRIX_4x4 MATRIX;
 
 
 //-------  Opérations sur les matrices  -----------------------------------
@@ -82,59 +64,11 @@ inline MATRIX_4x4 operator+(MATRIX_4x4 A,const MATRIX_4x4 &B)
     return A;
 }
 
-inline MATRIX operator+(MATRIX A,const MATRIX &B)
-{
-    for(int i=0;i<3;i++)
-    {
-        A.v[i][0]+=B.v[i][0];
-        A.v[i][1]+=B.v[i][1];
-        A.v[i][2]+=B.v[i][2];
-        A.t[i]+=B.t[i];
-    }
-    return A;
-}
-
-inline MATRIX_f operator+(MATRIX_f A,const MATRIX_f &B)
-{
-    for(int i=0;i<3; ++i)
-    {
-        A.v[i][0] += B.v[i][0];
-        A.v[i][1] += B.v[i][1];
-        A.v[i][2] += B.v[i][2];
-        A.t[i] += B.t[i];
-    }
-    return A;
-}
-
 // Soustraction
 inline MATRIX_4x4 operator-(MATRIX_4x4 A,const MATRIX_4x4 &B)
 {
     for(int i=0;i<16; ++i)
         A.E[i>>2][i&3] -= B.E[i>>2][i&3];
-    return A;
-}
-
-inline MATRIX operator-(MATRIX A,const MATRIX &B)
-{
-    for(int i=0;i<3; ++i)
-    {
-        A.v[i][0] -= B.v[i][0];
-        A.v[i][1] -= B.v[i][1];
-        A.v[i][2] -= B.v[i][2];
-        A.t[i]-=B.t[i];
-    }
-    return A;
-}
-
-inline MATRIX_f operator-(MATRIX_f A,const MATRIX_f &B)
-{
-    for(int i=0; i<3; ++i)
-    {
-        A.v[i][0]-=B.v[i][0];
-        A.v[i][1]-=B.v[i][1];
-        A.v[i][2]-=B.v[i][2];
-        A.t[i]-=B.t[i];
-    }
     return A;
 }
 
@@ -166,20 +100,6 @@ inline MATRIX_4x4 operator*(const MATRIX_4x4 &A,const MATRIX_4x4 &B)
 }
 
 
-inline MATRIX operator*(const MATRIX &A,const MATRIX &B)
-{
-    MATRIX C;
-    matrix_mul(&A,&B,&C);
-    return C;
-}
-
-inline MATRIX_f operator*(const MATRIX_f &A,const MATRIX_f &B)
-{
-    MATRIX_f C;
-    matrix_mul_f(&A,&B,&C);
-    return C;
-}
-
 // Multiplication(transformation d'un vecteur)
 inline Vector3D operator*(const Vector3D& A,const MATRIX_4x4 &B)
 {
@@ -190,53 +110,11 @@ inline Vector3D operator*(const Vector3D& A,const MATRIX_4x4 &B)
     return C;
 }
 
-inline Vector3D operator*(const Vector3D& A,MATRIX B)
-{
-    Vector3D C;
-    fixed x,y,z;
-    apply_matrix(&B,ftofix(A.x),ftofix(A.y),ftofix(A.z),&x,&y,&z);
-    C.x=fixtof(x);
-    C.y=fixtof(y);
-    C.z=fixtof(z);
-    return C;
-}
-
-inline Vector3D operator*(const Vector3D& A,const MATRIX_f &B)
-{
-    Vector3D C;
-    apply_matrix_f(&B,A.x,A.y,A.z,&C.x,&C.y,&C.z);
-    return C;
-}
-
 // Multiplication d'une matrice par un réel
 inline MATRIX_4x4 operator*(const float &A,MATRIX_4x4 B)
 {
     for(int i=0;i<16; ++i)
         B.E[i>>2][i&3]*=A;
-    return B;
-}
-
-inline MATRIX operator*(const fixed &A,MATRIX B)
-{
-    for(int i=0;i<3;i++)
-    {
-        B.v[i][0] = (B.v[i][0] >> 8) *A >> 8;
-        B.v[i][1] = (B.v[i][1] >> 8) *A >> 8;
-        B.v[i][2] = (B.v[i][2] >> 8) *A >> 8;
-        B.t[i]=(B.t[i]>>8)*A>>8;
-    }
-    return B;
-}
-
-inline MATRIX_f operator*(const float &A,MATRIX_f B)
-{
-    for(int i=0;i<3; ++i)
-    {
-        B.v[i][0]*=A;
-        B.v[i][1]*=A;
-        B.v[i][2]*=A;
-        B.t[i]*=A;
-    }
     return B;
 }
 

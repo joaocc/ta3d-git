@@ -145,7 +145,15 @@ public:
     { x *= v; y *= v; z *= v; return (*this); }
 
     Vector3D& operator *= (const Vector3D rhs)
-    { cross_product_f(x, y, z,  rhs.x, rhs.y, rhs.z,  &x, &y, &z); return (*this); }
+    {
+        float nx = y * rhs.z - z * rhs.y;
+        float ny = -x * rhs.z + z * rhs.x;
+        float nz = x * rhs.y - y * rhs.x;
+        x = nx;
+        y = ny;
+        z = nz;
+        return (*this);
+    }
 
     bool operator == (const Vector3D& rhs) const
     { return (fabsf(x-rhs.x) < 0.0001f && fabsf(y-rhs.y) < 0.0001f && fabsf(z-rhs.z) < 0.0001f); }

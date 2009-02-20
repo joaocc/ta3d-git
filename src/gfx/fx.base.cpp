@@ -107,7 +107,6 @@ namespace TA3D
     {
         glPolygonOffset(0.0f, 0.0f);
         glBindTexture(GL_TEXTURE_2D, fx_manager.wave_tex[animIndx + 4]);
-        gfx->set_alpha_blending();
 
         glPushMatrix();
 
@@ -129,7 +128,6 @@ namespace TA3D
 
         glColor4f( 1.0f, 1.0f, 1.0f, 1.0f );
         glPopMatrix();
-        gfx->unset_alpha_blending();
         glPolygonOffset(0.0f, -1600.0f);
     }
 
@@ -137,7 +135,6 @@ namespace TA3D
     {
         glPolygonOffset(0.0f,0.0f);
         glBindTexture(GL_TEXTURE_2D, fx_manager.ripple_tex);
-        gfx->set_alpha_blending();
 
         glPushMatrix();
 
@@ -157,7 +154,6 @@ namespace TA3D
 
         glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
         glPopMatrix();
-        gfx->unset_alpha_blending();
         glPolygonOffset(0.0f, -1600.0f);
     }
 
@@ -217,7 +213,7 @@ namespace TA3D
         if (px < 0 || py < 0 || px >= map->bloc_w || py >= map->bloc_h)
             return false;
         byte player_mask = 1 << players.local_human_id;
-        return ! (((map->view[py][px] != 1 || !(map->sight_map->line[py][px] & player_mask))
+        return ! (((map->view[py][px] != 1 || !(SurfaceByte(map->sight_map, px, py) & player_mask))
            && (anm > -2 || anm < -4)));
     }
 

@@ -2,6 +2,7 @@
 #include "area.h"
 #include "../../misc/paths.h"
 #include "skin.h"
+#include "skin.manager.h"
 #include "../../console.h"
 #include "../../TA3D_NameSpace.h"
 #include "../../gui.h"
@@ -89,12 +90,6 @@ namespace TA3D
         GUIOBJ* guiobj = doGetObject(message);
         if (guiobj && guiobj->Text.size() > 0)
         {
-            if (guiobj->Flag & FLAG_CENTERED)
-            {
-                float length = gui_font.length(guiobj->Text[0]) * guiobj->s;
-                guiobj->x1 += length * 0.5f;
-                guiobj->x2 -= length * 0.5f;
-            }
             if (guiobj->Type == OBJ_TEXTEDITOR)
             {
                 guiobj->Text.resize(1);
@@ -107,13 +102,7 @@ namespace TA3D
                         guiobj->Text.back() += *i;
             }
             else
-                guiobj->Text[0] = caption;
-            if (guiobj->Flag & FLAG_CENTERED)
-            {
-                float length = gui_font.length(guiobj->Text[0]) * guiobj->s;
-                guiobj->x1 -= length * 0.5f;
-                guiobj->x2 += length * 0.5f;
-            }
+                guiobj->set_caption( caption );
         }
         pMutex.unlock();
     }
@@ -162,6 +151,7 @@ namespace TA3D
     {
         poll_mouse();
         poll_keyboard();
+        key_pressed = keypressed();
         bool scroll = ((msec_timer - scroll_timer) >= 250);
         if (scroll)
         {
@@ -237,12 +227,7 @@ namespace TA3D
         for (sint32 i = vec_wnd.size() - 1; i >=0 ; --i)
             vec_wnd[vec_z_order[i]]->draw(help_msg, i == 0, true, skin);
         if( !help_msg.empty())
-        {
-            int old_u_format = get_uformat();
-            set_uformat(U_UTF8);
-            PopupMenu( mouse_x + 20, mouse_y + 20, help_msg, skin );
-            set_uformat(old_u_format);
-        }
+            skin->PopupMenu( mouse_x + 20, mouse_y + 20, help_msg);
 
         pMutex.unlock();
     }
@@ -258,28 +243,23 @@ namespace TA3D
 
         String skin_name = (lp_CONFIG != NULL && !lp_CONFIG->skin_name.empty()) ? lp_CONFIG->skin_name : "";
         if (!skin_name.empty() && HPIManager->Exists(skin_name))
-        {
-            skin = new SKIN();
-            skin->load_tdf(skin_name, 1.0f);
-        }
+            skin = skin_manager.load(skin_name, 1.0f);
 
         String real_filename = filename;
         if (skin != NULL && !skin->prefix.empty())
         {
-            int name_len = strlen(get_filename(real_filename.c_str()));
+            int name_len = Paths::ExtractFileName(real_filename).size();
             if (name_len > 0)
             {
                 real_filename.clear();
                 real_filename << filename.substr(0, filename.size() - name_len) << skin->prefix
-                    << get_filename(filename.c_str());
+                    << Paths::ExtractFileName(filename);
             }
             else
                 real_filename << skin->prefix;
             if (!HPIManager->Exists(real_filename))	// If it doesn't exist revert to the default name
                 real_filename = filename;
         }
-        if (skin)
-            delete skin;
         skin = NULL;
         TDFParser* areaFile = new TDFParser(real_filename);
 
@@ -304,8 +284,7 @@ namespace TA3D
             int area_width = areaFile->pullAsInt("area.width", SCREEN_W);
             int area_height = areaFile->pullAsInt("area.height", SCREEN_W);
             float skin_scale = Math::Min((float)SCREEN_H / area_height, (float)SCREEN_W / area_width);
-            skin = new SKIN();
-            skin->load_tdf(skin_name, skin_scale);
+            skin = skin_manager.load(skin_name, skin_scale);
         }
 
         String::Vector windows_to_load;
@@ -313,14 +292,14 @@ namespace TA3D
         for (String::Vector::const_iterator i = windows_to_load.begin(); i != windows_to_load.end(); ++i)
             load_window(*i);
 
-        String background_name = areaFile->pullAsString("area.background");
+        String background_name = areaFile->pullAsString("area.background", "none");
         if (background_name.toLower() != "none")           // If we have a background set then load it
         {
             if(skin && !skin->prefix.empty())
             {
-                int name_len = strlen(get_filename(background_name.c_str()));
+                int name_len = Paths::ExtractFileName(background_name).size();
                 if (name_len > 0)
-                    background_name = background_name.substr(0, background_name.size() - name_len) + skin->prefix + get_filename(background_name.c_str());
+                    background_name = background_name.substr(0, background_name.size() - name_len) + skin->prefix + Paths::ExtractFileName(background_name);
                 else
                     background_name += skin->prefix;
             }
@@ -339,6 +318,8 @@ namespace TA3D
                 }
             }
         }
+        else
+            background = 0;
         delete areaFile;
     }
 
@@ -390,8 +371,6 @@ namespace TA3D
 
         gfx->destroy_texture(background);		// Destroy the texture (using safe destroyer)
 
-        if (skin) // Destroy the skin
-            delete skin;
         skin = NULL;
     }
 
@@ -423,8 +402,6 @@ namespace TA3D
             background = 0;
         else
             gfx->destroy_texture(background); // Destroy the texture
-        if (skin)					// Destroy the skin
-            delete skin;
     }
 
     uint32 AREA::InterfaceMsg(const lpcImsg msg)

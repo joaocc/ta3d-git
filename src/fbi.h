@@ -130,7 +130,7 @@ namespace TA3D
         SCRIPT  *script;            // Scripts de l'unité
         GLuint  glpic;              // Image de l'unité sous forme de texture OpenGl
         MODEL   *model;             // Modèle associé à l'unité
-        BITMAP  *unitpic;           // Image de l'unité
+        SDL_Surface  *unitpic;      // Image de l'unité / Unit picture
         bool    isfeature;          // tell if we must turn this unit into a feature
         byte    SortBias;
         short   AltFromSeaLevel;
@@ -330,11 +330,6 @@ namespace TA3D
             destroy();
         }
 
-    private:
-        /*!
-        ** \brief Get next line of text from file buffer data
-        */
-        char *get_line(char *data);
     public:
 
         /*!
@@ -352,7 +347,7 @@ namespace TA3D
         /*!
         ** \brief Everything is in the name ...
         */
-        void show_info(float fade,GfxFont fnt);
+        void show_info(float fade,Font *fnt);
 
         /*!
         ** \brief Returns true if the units float on water

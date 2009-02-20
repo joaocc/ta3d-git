@@ -486,7 +486,7 @@ namespace TA3D
                             else
                             {
                                 features.lock();
-                                if(t_idx<-1 && !weapon_def->unitsonly && ((Vector3D)(features.feature[-t_idx-2].Pos-Pos)).sq()<=d)
+                                if(t_idx<-1 && !weapon_def->unitsonly && features.feature[-t_idx-2].type >= 0 && ((Vector3D)(features.feature[-t_idx-2].Pos-Pos)).sq()<=d)
                                 {
                                     // Start a fire ?
                                     if( feature_manager.feature[ features.feature[-t_idx-2].type ].flamable && !features.feature[-t_idx-2].burning && weapon_def->firestarter && local )
@@ -500,7 +500,7 @@ namespace TA3D
                                     }
 
                                     oidx.push_back( t_idx );
-                                    if(features.feature[-t_idx-2].type>=0 && !feature_manager.feature[features.feature[-t_idx-2].type].indestructible && !features.feature[-t_idx-2].burning )
+                                    if(!feature_manager.feature[features.feature[-t_idx-2].type].indestructible && !features.feature[-t_idx-2].burning )
                                     {
                                         damage = weapon_def->damage;
                                         float cur_damage = damage * weapon_def->edgeeffectiveness;
@@ -644,7 +644,7 @@ namespace TA3D
 
 
 
-    void WEAPON::draw(Camera *cam,MAP *map)				// Dessine les objets produits par les armes
+    void WEAPON::draw(MAP *map)				// Dessine les objets produits par les armes
     {
         visible = false;
         if(map)
@@ -654,7 +654,7 @@ namespace TA3D
             if(px<0 || py<0 || px>=map->bloc_w || py>=map->bloc_h)	return;
             byte player_mask = 1 << players.local_human_id;
             if(map->view[py][px]!=1
-               || !(map->sight_map->line[py][px]&player_mask))	return;
+               || !(SurfaceByte(map->sight_map, px, py) & player_mask))	return;
         }
         glPushMatrix();
 
@@ -680,7 +680,7 @@ namespace TA3D
                     int r = (int)(coef*getr(color0)+(1.0f-coef)*getr(color1));
                     int g = (int)(coef*getg(color0)+(1.0f-coef)*getg(color1));
                     int b = (int)(coef*getb(color0)+(1.0f-coef)*getb(color1));
-                    Vector3D D(Pos - cam->pos);
+                    Vector3D D(Pos - Camera::inGame->pos);
                     Vector3D Up(D * V);
                     Up.unit();
                     if( damage < 0 )
@@ -736,10 +736,10 @@ namespace TA3D
                     glEnable(GL_TEXTURE_2D);
                     glBindTexture(GL_TEXTURE_2D,weapon_manager.cannonshell.glbmp[anim_sprite]);
                     Vector3D A,B,C,D;
-                    A = Pos + ((-0.5f*weapon_manager.cannonshell.h[anim_sprite]-weapon_manager.cannonshell.ofs_y[anim_sprite])*cam->up+(-0.5f*weapon_manager.cannonshell.w[anim_sprite]-weapon_manager.cannonshell.ofs_x[anim_sprite])*cam->side);
-                    B = Pos + ((-0.5f*weapon_manager.cannonshell.h[anim_sprite]-weapon_manager.cannonshell.ofs_y[anim_sprite])*cam->up+(0.5f*weapon_manager.cannonshell.w[anim_sprite]-weapon_manager.cannonshell.ofs_x[anim_sprite])*cam->side);
-                    C = Pos + ((0.5f*weapon_manager.cannonshell.h[anim_sprite]-weapon_manager.cannonshell.ofs_y[anim_sprite])*cam->up+(-0.5f*weapon_manager.cannonshell.w[anim_sprite]-weapon_manager.cannonshell.ofs_x[anim_sprite])*cam->side);
-                    D = Pos + ((0.5f*weapon_manager.cannonshell.h[anim_sprite]-weapon_manager.cannonshell.ofs_y[anim_sprite])*cam->up+(0.5f*weapon_manager.cannonshell.w[anim_sprite]-weapon_manager.cannonshell.ofs_x[anim_sprite])*cam->side);
+                    A = Pos + ((-0.5f*weapon_manager.cannonshell.h[anim_sprite]-weapon_manager.cannonshell.ofs_y[anim_sprite])*Camera::inGame->up+(-0.5f*weapon_manager.cannonshell.w[anim_sprite]-weapon_manager.cannonshell.ofs_x[anim_sprite])*Camera::inGame->side);
+                    B = Pos + ((-0.5f*weapon_manager.cannonshell.h[anim_sprite]-weapon_manager.cannonshell.ofs_y[anim_sprite])*Camera::inGame->up+(0.5f*weapon_manager.cannonshell.w[anim_sprite]-weapon_manager.cannonshell.ofs_x[anim_sprite])*Camera::inGame->side);
+                    C = Pos + ((0.5f*weapon_manager.cannonshell.h[anim_sprite]-weapon_manager.cannonshell.ofs_y[anim_sprite])*Camera::inGame->up+(-0.5f*weapon_manager.cannonshell.w[anim_sprite]-weapon_manager.cannonshell.ofs_x[anim_sprite])*Camera::inGame->side);
+                    D = Pos + ((0.5f*weapon_manager.cannonshell.h[anim_sprite]-weapon_manager.cannonshell.ofs_y[anim_sprite])*Camera::inGame->up+(0.5f*weapon_manager.cannonshell.w[anim_sprite]-weapon_manager.cannonshell.ofs_x[anim_sprite])*Camera::inGame->side);
                     glBegin(GL_QUADS);
                     glTexCoord2f(0.0f,0.0f);		glVertex3f(A.x,A.y,A.z);
                     glTexCoord2f(1.0f,0.0f);		glVertex3f(B.x,B.y,B.z);

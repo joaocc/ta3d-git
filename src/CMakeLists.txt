@@ -2,8 +2,8 @@ ADD_SUBDIRECTORY(logs)
 ADD_SUBDIRECTORY(languages)
 ADD_SUBDIRECTORY(threads)
 ADD_SUBDIRECTORY(misc)
-ADD_SUBDIRECTORY(jpeg)
 ADD_SUBDIRECTORY(gfx)
+ADD_SUBDIRECTORY(input)
 ADD_SUBDIRECTORY(network)
 ADD_SUBDIRECTORY(ai)
 ADD_SUBDIRECTORY(ingame)
@@ -95,11 +95,10 @@ endif( WIN32 OR CMAKE_CROSSCOMPILING )
 
 ADD_EXECUTABLE(${3DMEDITOR_BIN}
         3dmeditor.cpp ta3d.h 3dmeditor_sub.cpp 3dmeditor.h
-        cTAFileParser.cpp cTAFileParser.h stdafx.h
-        TA3D_NameSpace.cpp TA3D_NameSpace.h ta3dbase.h)
+        stdafx.h TA3D_NameSpace.cpp TA3D_NameSpace.h ta3dbase.h)
 target_link_libraries(${3DMEDITOR_BIN}
-        stdafx logs console debuginfos 3dtoolbox misc i18n
-        tajpeg fileformats particles hpi oldgui gui ingame tdf
+        stdafx logs gfx input console debuginfos 3dtoolbox misc i18n
+        fileformats particles hpi oldgui gui ingame tdf
         converters animator gfx ta3dmath audio threads)
 IF(APPLE)
     SET(GUI_TYPE MACOSX_BUNDLE)
@@ -119,10 +118,10 @@ ELSE(APPLE)
 ENDIF(APPLE)
 SET(SOURCES
         ta3d.h main.cpp install.cpp cTA3D_Engine.cpp cTA3D_Engine.h
-        cTAFileParser.cpp cTAFileParser.h restore.cpp restore.h menu.cpp menu.h
+        restore.cpp restore.h menu.cpp menu.h
         EngineClass.cpp EngineClass.h UnitEngine.cpp UnitEngine.h
         fbi.cpp fbi.h intro.cpp intro.h  tdf.cpp tdf.h tnt.cpp tnt.h 
-        icon.cpp stdafx.h TA3D_NameSpace.cpp TA3D_NameSpace.h ta3dbase.h)
+        stdafx.h TA3D_NameSpace.cpp TA3D_NameSpace.h ta3dbase.h)
 
 
 
@@ -282,7 +281,7 @@ ENDIF(NOT APPLE)
 # --- Internal libraries ---
 #
 target_link_libraries(${TA3D_BIN}
-        stdafx logs console i18n ingame 3dtoolbox menus tajpeg gfx
+        stdafx input logs console i18n ingame 3dtoolbox menus gfx
         fileformats particles weapons ai audio hpi oldgui gui network misc scripts ta3dmath tdf
         converters threads debuginfos)
 
@@ -302,9 +301,12 @@ else( VAR_LIB_FMODEX )
    message( FATAL_ERROR "FMODex is required, please install FMODex" )
 endif( VAR_LIB_FMODEX )
 
+target_link_libraries(${TA3D_BIN} ${FTGL_LIB} ${FREETYPE_LIBRARIES})
+target_link_libraries(${3DMEDITOR_BIN} ${FTGL_LIB} ${FREETYPE_LIBRARIES})
+
 IF(WIN32)
-    target_link_libraries(${3DMEDITOR_BIN} agl lua gdi32 alleg opengl32 glu32)
-    target_link_libraries(${TA3D_BIN} agl lua gdi32 alleg opengl32 glu32 NL)
+    target_link_libraries(${3DMEDITOR_BIN} lua gdi32 opengl32 glu32 ${LIBS})
+    target_link_libraries(${TA3D_BIN} lua gdi32 opengl32 glu32 NL ${LIBS})
 ENDIF(WIN32)
 
 IF(NOT APPLE)

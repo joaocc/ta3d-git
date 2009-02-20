@@ -14,32 +14,40 @@ namespace TA3D
     class HWLight
     {
     public:
-        HWLight() { init(); }
+        static HWLight *inGame;
+    public:
+        inline HWLight() { init(); }
 
         void init();
 
         /*!
         ** \brief
         */
-        void Enable() const
+        inline void Enable() const
         { glEnable (HWNb); glEnable (GL_COLOR_MATERIAL); }
 
         /*!
-        ** \brief 
+        ** \brief
         */
-        void Disable() const { glDisable(HWNb); }
+        inline void Disable() const { glDisable(HWNb); }
 
         /*!
-        ** \brief 
+        ** \brief
         ** \param c
         */
         void Set(Camera& c);
+
+        /*!
+        ** \brief Set a camera from the light position, centered on the view frustum of c, used for shadow mapping
+        ** \param c
+        */
+        void SetView(const std::vector<Vector3D> &frustum);
 
     public:
         //! Position
         Vector3D Pos;
         //! Dir
-        Vector3D Dir;	
+        Vector3D Dir;
         GLfloat LightAmbient[4];
         GLfloat LightDiffuse[4];
         GLfloat LightSpecular[4];

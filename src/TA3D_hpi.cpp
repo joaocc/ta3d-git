@@ -339,10 +339,10 @@ namespace HPI
             li->Name = Name;
             li->E1 = Entry;
 
-            if (Entry->Flag == 1)   
+            if (Entry->Flag == 1)
             {
                 String sDir = m_cDir; // save directory
-                m_cDir << (char *)Name << "\\"; 
+                m_cDir << (char *)Name << "\\";
 
                 ProcessSubDir(li);     // process new directory
 
@@ -375,7 +375,7 @@ namespace HPI
         {
             Name = hfd->Directory + Entry->NameOffset;
             FileCount = (sint32 *) (hfd->Directory + Entry->CountOffset);
-            if (Entry->Flag == 1)   
+            if (Entry->Flag == 1)
             {
                 MyPath = startPath;
                 if( MyPath.length() )
@@ -443,15 +443,10 @@ namespace HPI
 
     void cHPIHandler::LocateAndReadFiles(const String& path, const String& filesearch, const bool priority)
     {
-        al_ffblk search;
-        if (al_findfirst(filesearch.c_str(), &search, FA_RDONLY | FA_ARCH ) == 0)
-        {
-            do
-            {
-                AddArchive(path + search.name, priority || String::ToLower(search.name) == "ta3d.hpi" );
-            } while( al_findnext( &search ) == 0 );
-            al_findclose(&search);
-        }
+        String::List file_list;
+        Paths::GlobFiles(file_list, filesearch);
+        for(String::List::iterator i = file_list.begin() ; i != file_list.end() ; ++i)
+            AddArchive( *i, priority || String::ToLower(Paths::ExtractFileName(*i)) == "ta3d.hpi" );
     }
 
 
@@ -644,7 +639,7 @@ namespace HPI
     {
         String UNIX_filename;
         uint32	FileSize;
-        
+
         for( String::Vector::const_iterator cur_Path = m_Path.begin() ; m_Path.end() != cur_Path ; ++cur_Path)
         {
             UNIX_filename.clear();
@@ -841,42 +836,23 @@ namespace HPI
     uint32 cHPIHandler::getFilelist(const String& s, String::List& li)
     {
         uint32 list_size = m_Archive->wildCardSearch(s, li);
-        al_ffblk info;
 
         String UNIX_search;
+        String root = Paths::ExtractFilePath(s).findAndReplace("/","\\");
         for( String::Vector::const_iterator cur_Path = m_Path.begin() ; m_Path.end() != cur_Path ; ++cur_Path)
         {
             UNIX_search.clear();
             UNIX_search << *cur_Path << s;
             UNIX_search.convertAntiSlashesIntoSlashes();
 
-            if (al_findfirst(UNIX_search.c_str(), &info, FA_RDONLY | FA_HIDDEN | FA_SYSTEM | FA_ARCH ) == 0)
-            {
-                int last = -1;
-                for (uint16 i = 0 ; i < UNIX_search.size() ; ++i)
-                {
-                    if (UNIX_search[i] == '/')
-                    {
-                        UNIX_search[i] = '\\';
-                        last = i;
-                    }
-                }
-                if (last >= 0)
-                    UNIX_search.resize(last + 1);
-                else
-                    UNIX_search = "";
+            String::List n_list;
+            Paths::GlobFiles(n_list,UNIX_search,false,true);
+            for(String::List::iterator it = n_list.begin() ; it != n_list.end() ; ++it)
+                li.push_back( root + *it);
 
-                do
-                {
-                    li.push_back(UNIX_search.substr( cur_Path->size(), UNIX_search.size() - cur_Path->size() ) + info.name);
-                } while (al_findnext(&info) == 0);
-
-                al_findclose(&info);
-
-                li.sort();
-                li.unique();
-                list_size = li.size();
-            }
+            li.sort();
+            li.unique();
+            list_size = li.size();
 
             if (TA3D_CURRENT_MOD != "")
             {
@@ -884,33 +860,11 @@ namespace HPI
                 UNIX_search << TA3D_CURRENT_MOD << s;
                 UNIX_search.convertAntiSlashesIntoSlashes();
 
-                if (al_findfirst( UNIX_search.c_str(), &info, FA_RDONLY | FA_HIDDEN | FA_SYSTEM | FA_ARCH ) == 0)
-                {
-                    int last = -1;
-                    for (uint16 i = 0 ; i < UNIX_search.size() ; ++i)
-                    {
-                        if( UNIX_search[i] == '/' )
-                        {
-                            UNIX_search[i] = '\\';
-                            last = i;
-                        }
-                    }
-                    if (last >= 0)
-                        UNIX_search.resize(last + 1);
-                    else
-                        UNIX_search = "";
+                Paths::GlobFiles(li,UNIX_search,false,true);
 
-                    do
-                    {
-                        li.push_back (UNIX_search.substr( cur_Path->size() + TA3D_CURRENT_MOD.size(), UNIX_search.size() - cur_Path->size() - TA3D_CURRENT_MOD.size() ) + info.name);
-                    } while (al_findnext(&info) == 0);
-
-                    al_findclose(&info);
-
-                    li.sort();
-                    li.unique();
-                    list_size = li.size();
-                }
+                li.sort();
+                li.unique();
+                list_size = li.size();
             }
         }
 
@@ -1055,7 +1009,7 @@ namespace HPI
     }
 
 
-    bool load_palette(RGB *pal, const String& filename)
+    bool load_palette(SDL_Color *pal, const String& filename)
     {
         byte* palette = HPIManager->PullFromHPI(filename);
         if (palette == NULL)
@@ -1063,9 +1017,9 @@ namespace HPI
 
         for (int i = 0; i < 256; ++i)
         {
-            pal[i].r = palette[i << 2]>>2;
-            pal[i].g = palette[(i << 2) + 1] >> 2;
-            pal[i].b = palette[(i << 2) + 2] >> 2;
+            pal[i].r = palette[i << 2];
+            pal[i].g = palette[(i << 2) + 1];
+            pal[i].b = palette[(i << 2) + 2];
         }
         delete[] palette;
         return true;

@@ -28,11 +28,10 @@
 #ifndef __TA3D_NAMESPACE_H__
 # define __TA3D_NAMESPACE_H__
 
-
+# include "gfx/gfx.toolkit.h"
 # include "misc/interface.h"
 # include "cError.h"
 # include "misc/vector.h"
-# include "cTAFileParser.h"
 # include "TA3D_hpi.h"
 # include "gfx/gfx.h"
 # include "network/network.h"
@@ -50,20 +49,12 @@
 
 namespace TA3D
 {
-	#define TA3D_API_SI static inline
-	#define TA3D_API_EI extern inline
-	#define TA3D_API_S static
-	#define TA3D_API_E extern
-
-
-
 	typedef struct TA3DCONFIG
 	{
 		real32	fps_limit;
-		real32	shadow_r;      // 0.0 -> 100.0
 		real32	timefactor;      // 1.0 -> 10.0
 
-		sint16	shadow_quality; // 0 -> 100
+		sint16	shadow_quality; // 0 -> none, 1 -> low (shadow volumes), 2 -> normal (shadow maps)
 		sint16	priority_level; // 0, 1, 2
 		sint16	water_quality;  // 0->4
 		sint16	fsaa;  // ?
@@ -78,7 +69,6 @@ namespace TA3D
 		bool	particle;
 		bool    explosion_particles;
 		bool	waves;
-		bool	shadow;
 		bool	height_line;
 		bool	fullscreen;
 
@@ -164,9 +154,8 @@ namespace TA3D
 			detail_tex = false;				// default set to false because of fragment program dependency ( and it's only an eye candy feature )
 
 			fps_limit = -1.0f;
-			shadow_r = 0.02f;
 			timefactor = 1.0f;
-			shadow_quality = 1;
+			shadow_quality = 2;
 			priority_level = 0;
 			water_quality = 1;      		// For now only because we have shaders issues with ati board
 			fsaa = 0;
@@ -179,7 +168,6 @@ namespace TA3D
 			particle = true;
 			explosion_particles = true;
 			waves = true;
-			shadow = true;
 			height_line = false;
 			fullscreen = false;            // For now, later will be true when we will reach a beta release
 
@@ -197,11 +185,12 @@ namespace TA3D
 
 	namespace VARS
 	{
+	    TA3D_API_E SDL_Surface                      *screen;
 		TA3D_API_E TA3D::IInterfaceManager			*InterfaceManager;
 		TA3D_API_E TA3D::UTILS::HPI::cHPIHandler	*HPIManager;
 		TA3D_API_E TA3D::GFX* gfx;
 
-		TA3D_API_E RGB								*pal;
+		TA3D_API_E SDL_Color						*pal;
 		TA3D_API_E TA3D::TA3DCONFIG					*lp_CONFIG;
 
 		TA3D_API_E uint8							unit_engine_thread_sync;
@@ -211,7 +200,6 @@ namespace TA3D
 
 		TA3D_API_E ObjectSync						*ThreadSynchroniser;
 		TA3D_API_E String							TA3D_CURRENT_MOD;
-		TA3D_API_E int								ascii_to_scancode[ 256 ];
 
 		// Some constant data needed by the engine ( like number of ticks/sec. to simulate )
 #define TICKS_PER_SEC				30
@@ -225,15 +213,18 @@ namespace TA3D
     ** \brief Clear the cache if needed (useful when mod has changed)
     */
 	void TA3D_clear_cache(bool force=false);
-
 } // namespace TA3D
 
+#include "input/mouse.h"
+#include "input/keyboard.h"
 
+#define SCREEN_W    (screen->w)
+#define SCREEN_H    (screen->h)
 
 
 #ifndef TA3D_MSEC_TIMER
 #define TA3D_MSEC_TIMER
-extern volatile uint32	msec_timer;
+#define msec_timer  (SDL_GetTicks())
 #endif
 
 // TODO Must be removed

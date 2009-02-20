@@ -27,7 +27,7 @@
 
 # include "fbi.h"
 # include "ingame/weapons/weapons.h"
-# include "threads/cThread.h"
+# include "threads/thread.h"
 # include "misc/camera.h"
 # include <list>
 # include <vector>
@@ -312,7 +312,7 @@ namespace TA3D
 
         void destroy(bool full = false);
 
-        void draw(float t, Camera& cam, MAP *map, bool height_line = true);
+        void draw(float t, MAP *map, bool height_line = true);
 
         void draw_shadow(const Vector3D& Dir, MAP *map);
 
@@ -502,7 +502,7 @@ namespace TA3D
 
     class INGAME_UNITS :	public ObjectSync,			// Class to manage huge number of units during the game
     protected IInterface,				// It inherits from what we need to use threads
-    public cThread
+    public Thread
     {
     public:
         typedef std::vector< std::list< uint16 > >  RepairPodsList;
@@ -562,8 +562,8 @@ namespace TA3D
         uint32		InterfaceMsg(const lpcImsg msg);	// Manage signals sent through the interface to unit manager
 
     protected:
-        int			Run();
-        void		SignalExitThread();
+        void	proc(void*);
+        void	signalExitThread();
 
     public:
 
@@ -579,9 +579,9 @@ namespace TA3D
 
         void kill(int index,MAP *map,int prev,bool sync = true);			// Détruit une unité
 
-        void draw(Camera& cam, MAP *map, bool underwater = false, bool limit = false, bool cullface = true, bool height_line = true); // Dessine les unités visibles
+        void draw(MAP *map, bool underwater = false, bool limit = false, bool cullface = true, bool height_line = true); // Dessine les unités visibles
 
-        void draw_shadow(Camera& cam, const Vector3D& Dir, MAP* map, float alpha = 0.5f); // Dessine les ombres des unités visibles
+        void draw_shadow(const Vector3D& Dir, MAP* map, float alpha = 0.5f); // Dessine les ombres des unités visibles
 
         void draw_mini(float map_w, float map_h, int mini_w, int mini_h, SECTOR** map_data); // Repère les unités sur la mini-carte
 

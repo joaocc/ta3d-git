@@ -1390,7 +1390,7 @@ namespace TA3D
     int LUA_PROGRAM::run(MAP *map,float dt,int viewer_id)									// Execute le script
     {
         pMutex.lock();
-        draw_list.draw(gfx->TA_font);			// Execute la liste de commandes de dessin
+        draw_list.draw(gfx->big_font);			// Execute la liste de commandes de dessin
         pMutex.unlock();
 
         if (!running )	return	-1;
@@ -1464,19 +1464,20 @@ namespace TA3D
         lua_program->unlock();
     }
 
-    void DRAW_LIST::draw(GfxFont &fnt)
+    void DRAW_LIST::draw(Font *fnt)
     {
         glPushMatrix();
-        glScalef(SCREEN_W/640.0f,SCREEN_H/480.0f,1.0f);
         switch(prim.type)
         {
             case DRAW_TYPE_POINT:
+                glScalef(SCREEN_W/640.0f,SCREEN_H/480.0f,1.0f);
                 glBegin(GL_POINTS);
                 glColor3f(prim.r[0],prim.g[0],prim.b[0]);
                 glVertex2f(prim.x[0],prim.y[0]);
                 glEnd();
                 break;
             case DRAW_TYPE_LINE:
+                glScalef(SCREEN_W/640.0f,SCREEN_H/480.0f,1.0f);
                 glBegin(GL_LINES);
                 glColor3f(prim.r[0],prim.g[0],prim.b[0]);
                 glVertex2f(prim.x[0],prim.y[0]);
@@ -1484,6 +1485,7 @@ namespace TA3D
                 glEnd();
                 break;
             case DRAW_TYPE_CIRCLE:
+                glScalef(SCREEN_W/640.0f,SCREEN_H/480.0f,1.0f);
                 glBegin(GL_LINE_STRIP);
                 glColor3f(prim.r[0],prim.g[0],prim.b[0]);
                 {
@@ -1495,6 +1497,7 @@ namespace TA3D
                 glEnd();
                 break;
             case DRAW_TYPE_TRIANGLE:
+                glScalef(SCREEN_W/640.0f,SCREEN_H/480.0f,1.0f);
                 glBegin(GL_TRIANGLES);
                 glColor3f(prim.r[0],prim.g[0],prim.b[0]);
                 glVertex2f(prim.x[0],prim.y[0]);
@@ -1503,6 +1506,7 @@ namespace TA3D
                 glEnd();
                 break;
             case DRAW_TYPE_BOX:
+                glScalef(SCREEN_W/640.0f,SCREEN_H/480.0f,1.0f);
                 glBegin(GL_LINE_STRIP);
                 glColor3f(prim.r[0],prim.g[0],prim.b[0]);
                 glVertex2f(prim.x[0],prim.y[0]);
@@ -1513,6 +1517,7 @@ namespace TA3D
                 glEnd();
                 break;
             case DRAW_TYPE_FILLBOX:
+                glScalef(SCREEN_W/640.0f,SCREEN_H/480.0f,1.0f);
                 glBegin(GL_QUADS);
                 glColor3f(prim.r[0],prim.g[0],prim.b[0]);
                 glVertex2f(prim.x[0],prim.y[0]);
@@ -1524,10 +1529,11 @@ namespace TA3D
             case DRAW_TYPE_TEXT:
                 glEnable(GL_BLEND);
                 glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-                gfx->print(fnt,prim.x[0],prim.y[0],0.0f,makeacol32((int)(prim.r[0]*255.0f),(int)(prim.g[0]*255.0f),(int)(prim.b[0]*255.0f), 0xFF),prim.text);
+                gfx->print(fnt,prim.x[0] * SCREEN_W / 640.0f,prim.y[0] * SCREEN_H / 480.0f,0.0f,makeacol32((int)(prim.r[0]*255.0f),(int)(prim.g[0]*255.0f),(int)(prim.b[0]*255.0f), 0xFF),prim.text);
                 glDisable(GL_BLEND);
                 break;
             case DRAW_TYPE_BITMAP:
+                glScalef(SCREEN_W/640.0f,SCREEN_H/480.0f,1.0f);
                 if (prim.tex == 0 && !prim.text.empty() ) {
                     prim.tex = gfx->load_texture( prim.text );
                     prim.text.clear();

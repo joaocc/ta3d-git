@@ -170,8 +170,6 @@ namespace TA3D
         bool show_title;
         //! Draw borders ?
         bool draw_borders;
-        //! Format used by the window
-        int	 u_format;
         //! Is the window visible ?
         bool hidden;
         //! In order to do some cleaning
@@ -187,6 +185,11 @@ namespace TA3D
 
 
     private:
+        /*!
+        ** \brief Draw the shadow of the window if it has one
+        ** \see draw()
+        */
+        void doDrawWindowShadow(SKIN* skin);
         /*!
         ** \brief Draw the background of the window
         ** \see draw()
@@ -205,15 +208,15 @@ namespace TA3D
         ** \brief Draw a foreground object
         */
         void doDrawWindowForegroundObject(SKIN* skin, const int i);
-        
-        
+
+
         /*!
         ** \brief
         ** \param wasOnFloattingMenu
         ** \param indxMenu
         */
         void doCheckWasOnFLoattingMenu(const int i, bool& wasOnFloattingMenu, int& indxMenu, SKIN* skin);
-    
+
         /*!
         ** \brief Same as get_object
         ** \see get_object()

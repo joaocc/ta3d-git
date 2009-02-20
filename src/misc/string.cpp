@@ -1,6 +1,5 @@
 #include "../stdafx.h"
 #include "string.h"
-#include <allegro.h>
 
 #if TA3D_USE_BOOST == 1
 #  include <boost/algorithm/string.hpp>
@@ -185,8 +184,12 @@ namespace TA3D
             key = "[";
             pos = s.find_first_not_of(TA3D_WSTR_SEPARATORS, pos + 1);
             String::size_type end = s.find_first_of(']', pos);
-            end = s.find_last_not_of(TA3D_WSTR_SEPARATORS, end - 1);
-            value = s.substr(pos, end - pos + 1);
+            if (end != String::npos)
+            {
+                end = s.find_last_not_of(TA3D_WSTR_SEPARATORS, end - 1);
+                if (pos != String::npos && end != String::npos)
+                    value = s.substr(pos, end - pos + 1);
+            }
             return;
         }
         // The first `=` character
@@ -352,13 +355,18 @@ namespace TA3D
             *ret = '\0';
             return ret;
         }
-        // see http://linux.die.net/man/3/uconvert_size
-        newSize = uconvert_size(s, U_ASCII, U_UTF8); // including the mandatory zero terminator of the string
+        byte tmp[4];
+        newSize = 1;
+        for(byte *p = (byte*)s ; *p ; p++)
+            newSize += ASCIItoUTF8(*p, tmp);
+
         char* ret = new char[newSize];
         LOG_ASSERT(NULL != ret);
-        // see http://linux.die.net/man/3/do_uconvert
-        do_uconvert(s, U_ASCII, ret, U_UTF8, newSize);
-        ret[newSize - 1] = '\0'; // A bit paranoid
+
+        byte *q = (byte*)ret;
+        for(byte *p = (byte*)s ; *p ; p++)
+            q += ASCIItoUTF8(*p, q);
+        *q = '\0'; // A bit paranoid
         return ret;
     }
 
@@ -534,7 +542,76 @@ namespace TA3D
         return s;
     }
 
+    bool String::match(const String &pattern)
+    {
+        if (pattern.empty())
+            return empty();
 
+        int e = 0;
+        int prev = -1;
+        for(int i = 0 ; i < size() ; i++)
+            if (pattern[e] == '*')
+            {
+                if (e + 1 == pattern.size())
+                    return true;
+                while(pattern[e+1] == '*')  e++;
+                if (e + 1 == pattern.size())
+                    return true;
 
+                prev = e;
+                if (pattern[e+1] == (*this)[i])
+                    e+=2;
+            }
+            else if(pattern[e] == (*this)[i])
+                e++;
+            else if(prev >= 0)
+                e = prev;
+            else
+                return false;
+        return e == pattern.size();
+    }
 
+    String String::substrUTF8(int pos, int len) const
+    {
+        String res;
+        int utf8_pos = 0;
+        for(; pos > 0 ; pos--)
+            if (((byte)(*this)[utf8_pos]) >= 0xC0)
+            {
+                utf8_pos++;
+                while (((byte)(*this)[utf8_pos]) >= 0x80 && ((byte)(*this)[utf8_pos]) < 0xC0)
+                    utf8_pos++;
+            }
+            else
+                utf8_pos++;
+
+        for(; len > 0 ; len--)
+        {
+            if (((byte)(*this)[utf8_pos]) >= 0x80)
+            {
+                res << (char)(*this)[utf8_pos];
+                utf8_pos++;
+                while (((byte)(*this)[utf8_pos]) >= 0x80 && ((byte)(*this)[utf8_pos]) < 0xC0)
+                {
+                    res << (char)(*this)[utf8_pos];
+                    utf8_pos++;
+                }
+            }
+            else
+            {
+                res << ((char)(*this)[utf8_pos]);
+                utf8_pos++;
+            }
+        }
+        return res;
+    }
+
+    int String::sizeUTF8() const
+    {
+        int len = 0;
+        for(int i = 0 ; i < this->size() ; i++)
+            if (((byte)(*this)[i]) >= 0xC0 || ((byte)(*this)[i]) < 0x80)
+                len++;
+        return len;
+    }
 }

@@ -31,12 +31,12 @@
 #include "gfx/particles/particles.h"
 #include "ingame/sidedata.h"
 #include "languages/i18n.h"
-#include "jpeg/ta3d_jpg.h"
 #include "misc/math.h"
 #include "misc/paths.h"
 #include "misc/files.h"
 #include "logs/logs.h"
-
+#include "gfx/gl.extensions.h"
+#include <zlib.h>
 
 
 namespace TA3D
@@ -85,7 +85,7 @@ namespace TA3D
     }
 
 
-    BITMAP* TEXTURE_MANAGER::get_bmp_texture(const String& texture_name, const int frame)
+    SDL_Surface* TEXTURE_MANAGER::get_bmp_texture(const String& texture_name, const int frame)
     {
         int index = get_texture_index(texture_name);
         return (index== -1) ? NULL : tex[index].bmp[frame];
@@ -100,7 +100,7 @@ namespace TA3D
         for (int i = 0; i < 256; ++i)
         {
             tex[i].nb_bmp = 1;
-            tex[i].bmp = new BITMAP*[1];
+            tex[i].bmp = new SDL_Surface*[1];
             tex[i].glbmp = new GLuint[1];
             tex[i].ofs_x = new short[1];
             tex[i].ofs_y = new short[1];
@@ -112,8 +112,8 @@ namespace TA3D
             tex[i].ofs_y[0] = 0;
             tex[i].w[0] = 16;
             tex[i].h[0] = 16;
-            tex[i].bmp[0] = create_bitmap_ex(32,16,16);
-            clear_to_color(tex[i].bmp[0], makeacol(pal[i].r << 2, pal[i].g << 2, pal[i].b << 2, 0xFF));
+            tex[i].bmp[0] = gfx->create_surface_ex(32,16,16);
+            SDL_FillRect(tex[i].bmp[0], NULL, makeacol(pal[i].r, pal[i].g, pal[i].b, 0xFF));
 
             tex_hashtable.insert(tex[i].name,i + 1);
         }
@@ -239,7 +239,7 @@ namespace TA3D
 
         for (uint16 e = 0; e < nb_piece; ++e)
         {
-            if (flag[e] & FLAG_EXPLODE)// && (explosion_flag[e]&EXPLODE_BITMAPONLY)!=EXPLODE_BITMAPONLY)		// This piece is exploding
+            if (flag[e] & FLAG_EXPLODE)// && (explosion_flag[e]&EXPLODE_SDL_SurfaceONLY)!=EXPLODE_SDL_SurfaceONLY)		// This piece is exploding
             {
                 for (byte i = 0; i < 3; ++i)
                 {
@@ -669,7 +669,7 @@ namespace TA3D
         optimised_nb_vtx = total_vtx;
     }
 
-    int OBJECT::load_obj(byte *data,int offset,int dec,const char *filename)
+    int OBJECT::load_obj(byte *data,int offset,int dec,const String &filename)
     {
         destroy();					// Au cas où l'objet ne serait pas vierge
 
@@ -790,6 +790,7 @@ namespace TA3D
 
             switch(primitive.NumberOfVertexIndexes)
             {
+                case 0:                      break;
                 case 1:		++nb_p_index;    break;
                 case 2:		nb_l_index += 2; break;
                 default:
@@ -847,6 +848,8 @@ namespace TA3D
 
             switch (primitive.NumberOfVertexIndexes)
             {
+                case 0:
+                    break;
                 case 1:
                     p_index[pos_p++] = *((short*)(data+primitive.OffsetToVertexIndexArray));
                     break;
@@ -1002,20 +1005,20 @@ namespace TA3D
             if (py[i] + dy > my)   my = py[i] + dy;
         }
 
-        BITMAP* bmp = create_bitmap_ex(24, mx, my);
+        SDL_Surface* bmp = gfx->create_surface_ex(32, mx, my);
         if (bmp != NULL && mx != 0 && my != 0)
         {
             if (g_useTextureCompression && lp_CONFIG->use_texture_compression)
-                allegro_gl_set_texture_format(GL_COMPRESSED_RGB_ARB);
+                gfx->set_texture_format(GL_COMPRESSED_RGB_ARB);
             else
-                allegro_gl_set_texture_format(GL_RGB8);
-            clear(bmp);
+                gfx->set_texture_format(GL_RGB8);
+            SDL_FillRect(bmp, NULL, 0);
             tex_cache_name.clear();
             for (short e = 0; e < expected_players; ++e)
             {
                 bool mtex_needed = false;
                 dtex = e + 1;
-                String cache_filename = filename ? String( filename ) + format("-%s-%d.bin", !name.empty() ? name.c_str() : "none", player_color_map[e] ) : String( "" );
+                String cache_filename = !filename.empty() ? filename + format("-%s-%d.bin", !name.empty() ? name.c_str() : "none", player_color_map[e] ) : String( "" );
                 cache_filename = cache_filename.findAndReplace("/","S");
                 cache_filename = cache_filename.findAndReplace("\\","S");
 
@@ -1042,9 +1045,9 @@ namespace TA3D
                                      texture_manager.tex[index_tex[i]].bmp[0]->h);
                             }
                         }
-                        cache_filename = TA3D::Paths::Files::ReplaceExtension( cache_filename, ".tga" );
+                        cache_filename = TA3D::Paths::Files::ReplaceExtension( cache_filename, ".tex" );
                         if (!TA3D::Paths::Exists( TA3D::Paths::Caches + cache_filename ))
-                            save_bitmap( (TA3D::Paths::Caches + cache_filename).c_str(), bmp, NULL );
+                            SaveTex( bmp, TA3D::Paths::Caches + cache_filename );
                     }
                     else
                     {
@@ -1080,7 +1083,7 @@ namespace TA3D
                             }
                         }
                         gltex[e] = gfx->make_texture(bmp,FILTER_TRILINEAR,true);
-                        if (filename)
+                        if (!filename.empty())
                             gfx->save_texture_to_cache(cache_filename, gltex[e], bmp->w, bmp->h);
                     }
                     else
@@ -1095,7 +1098,7 @@ namespace TA3D
         else
             dtex=0;
         if (bmp)
-            destroy_bitmap(bmp);
+            SDL_FreeSurface(bmp);
 
         int nb_total_point = 0;
         for (i = 0; i < nb_t_index; ++i)
@@ -1238,35 +1241,38 @@ namespace TA3D
     {
         if (id < 0 || id >= 10)
 			return;
-        if (id < (int)tex_cache_name.size() && !tex_cache_name[id].empty() && TA3D::Paths::ExtractFileExt(tex_cache_name[id]) == ".tga")
+        if (id < (int)tex_cache_name.size() && !tex_cache_name[id].empty() && TA3D::Paths::ExtractFileExt(tex_cache_name[id]) == ".tex")
         {
                     // Use global texture configuration
             if (surface.Flag&SURFACE_ADVANCED)
             {
                 if (g_useTextureCompression && lp_CONFIG->use_texture_compression)
-                    allegro_gl_set_texture_format(GL_COMPRESSED_RGBA_ARB);
+                    gfx->set_texture_format(GL_COMPRESSED_RGBA_ARB);
                 else
-                    allegro_gl_set_texture_format(GL_RGBA8);
-                allegro_gl_use_alpha_channel(true);
+                    gfx->set_texture_format(GL_RGBA8);
             }
             else
             {
                 if (g_useTextureCompression && lp_CONFIG->use_texture_compression)
-                    allegro_gl_set_texture_format(GL_COMPRESSED_RGB_ARB);
+                    gfx->set_texture_format(GL_COMPRESSED_RGB_ARB);
                 else
-                    allegro_gl_set_texture_format(GL_RGB8);
+                    gfx->set_texture_format(GL_RGB8);
             }
 
-            BITMAP *bmp = load_bitmap( (TA3D::Paths::Caches + tex_cache_name[id]).c_str(), NULL );
+            SDL_Surface *bmp = LoadTex( TA3D::Paths::Caches + tex_cache_name[id] );
             GLuint texid = gfx->make_texture(bmp,FILTER_TRILINEAR,true);
-            allegro_gl_use_alpha_channel(false);
             if (surface.Flag&SURFACE_ADVANCED)
                 surface.gltex[id] = texid;
             else
                 gltex[id] = texid;
 
-            gfx->save_texture_to_cache( TA3D::Paths::Files::ReplaceExtension(tex_cache_name[id],".bin"), texid, bmp->w, bmp->h);
-            destroy_bitmap( bmp );
+            if (bmp)
+            {
+                gfx->save_texture_to_cache( TA3D::Paths::Files::ReplaceExtension(tex_cache_name[id],".bin"), texid, bmp->w, bmp->h);
+                SDL_FreeSurface( bmp );
+            }
+            else
+                LOG_WARNING(LOG_PREFIX_3DO << "could not load texture : " << tex_cache_name[id]);
 
             tex_cache_name[id].clear();
 		}
@@ -1285,7 +1291,7 @@ namespace TA3D
 
 
 
-	void OBJECT::create_from_2d(BITMAP *bmp,float w,float h,float max_h)
+	void OBJECT::create_from_2d(SDL_Surface *bmp,float w,float h,float max_h)
 	{
 		destroy(); // Au cas où l'objet ne serait pas vierge
 
@@ -1456,9 +1462,9 @@ namespace TA3D
         }
 
         if (g_useTextureCompression && lp_CONFIG->use_texture_compression)
-            allegro_gl_set_texture_format(GL_COMPRESSED_RGBA_ARB);
+            gfx->set_texture_format(GL_COMPRESSED_RGBA_ARB);
         else
-            allegro_gl_set_texture_format(GL_RGB5_A1);
+            gfx->set_texture_format(GL_RGB5_A1);
         gltex[0] = gfx->make_texture(bmp, FILTER_TRILINEAR);
         dtex = 1;
 
@@ -1640,7 +1646,7 @@ namespace TA3D
                                 }
                             }
 
-                            if (surface.Flag&SURFACE_TEXTURED && !notex) // Les textures et effets de texture
+                            if ((surface.Flag&SURFACE_TEXTURED) && !notex) // Les textures et effets de texture
                             {
                                 activated_tex = true;
                                 for (int j = 0; j < surface.NbTex; ++j)
@@ -1654,15 +1660,15 @@ namespace TA3D
                                         glTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
                                         glEnable(GL_TEXTURE_GEN_S);
                                         glEnable(GL_TEXTURE_GEN_T);
-                                        glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_COMBINE_EXT);
-                                        glTexEnvi(GL_TEXTURE_ENV,GL_COMBINE_RGB_EXT,GL_INTERPOLATE);
+                                        glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE, TA3D_GL_COMBINE_EXT);
+                                        glTexEnvi(GL_TEXTURE_ENV,TA3D_GL_COMBINE_RGB_EXT,GL_INTERPOLATE);
 
-                                        glTexEnvi(GL_TEXTURE_ENV,GL_SOURCE0_RGB_EXT,GL_TEXTURE);
-                                        glTexEnvi(GL_TEXTURE_ENV,GL_OPERAND0_RGB_EXT,GL_SRC_COLOR);
-                                        glTexEnvi(GL_TEXTURE_ENV,GL_SOURCE1_RGB_EXT,GL_PREVIOUS_EXT);
-                                        glTexEnvi(GL_TEXTURE_ENV,GL_OPERAND1_RGB_EXT,GL_SRC_COLOR);
-                                        glTexEnvi(GL_TEXTURE_ENV,GL_SOURCE2_RGB_EXT,GL_CONSTANT_EXT);
-                                        glTexEnvi(GL_TEXTURE_ENV,GL_OPERAND2_RGB_EXT,GL_SRC_COLOR);
+                                        glTexEnvi(GL_TEXTURE_ENV,TA3D_GL_SOURCE0_RGB_EXT,GL_TEXTURE);
+                                        glTexEnvi(GL_TEXTURE_ENV,TA3D_GL_OPERAND0_RGB_EXT,GL_SRC_COLOR);
+                                        glTexEnvi(GL_TEXTURE_ENV,TA3D_GL_SOURCE1_RGB_EXT,TA3D_GL_PREVIOUS_EXT);
+                                        glTexEnvi(GL_TEXTURE_ENV,TA3D_GL_OPERAND1_RGB_EXT,GL_SRC_COLOR);
+                                        glTexEnvi(GL_TEXTURE_ENV,TA3D_GL_SOURCE2_RGB_EXT,TA3D_GL_CONSTANT_EXT);
+                                        glTexEnvi(GL_TEXTURE_ENV,TA3D_GL_OPERAND2_RGB_EXT,GL_SRC_COLOR);
                                         glTexEnvfv(GL_TEXTURE_ENV,GL_TEXTURE_ENV_COLOR,surface.RColor);
                                     }
                                     else
@@ -1683,7 +1689,7 @@ namespace TA3D
                             }
                             else
                             {
-                                for (int j = 7; j >= 0; --j)
+                                for (int j = 6; j >= 0; --j)
                                 {
                                     glActiveTextureARB(GL_TEXTURE0_ARB + j);
                                     glDisable(GL_TEXTURE_2D);
@@ -1691,6 +1697,8 @@ namespace TA3D
                                     glDisableClientState(GL_TEXTURE_COORD_ARRAY);
                                 }
                                 glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+                                glEnable(GL_TEXTURE_2D);
+                                glBindTexture(GL_TEXTURE_2D, gfx->default_texture);
                             }
                         }
                         else
@@ -1792,6 +1800,7 @@ namespace TA3D
 #endif
             if (sel_primitive && selprim >= 0 && nb_vtx > 0) // && (data_s==NULL || (data_s!=NULL && !data_s->explode))) {
             {
+                gfx->disable_model_shading();
                 glDisableClientState(GL_TEXTURE_COORD_ARRAY);
                 glDisableClientState(GL_NORMAL_ARRAY);
                 glDisable(GL_LIGHTING);
@@ -1810,6 +1819,7 @@ namespace TA3D
                 else
                     glColor3ub(0xFF,0xFF,0xFF);
                 alset=false;
+                gfx->enable_model_shading();
             }
             if (!chg_col)
                 glColor4fv(color_factor);
@@ -1920,16 +1930,16 @@ namespace TA3D
                             glTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
                             glEnable(GL_TEXTURE_GEN_S);
                             glEnable(GL_TEXTURE_GEN_T);
-                            glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_COMBINE_EXT);
-                            glTexEnvi(GL_TEXTURE_ENV,GL_COMBINE_RGB_EXT,GL_INTERPOLATE);
+                            glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, TA3D_GL_COMBINE_EXT);
+                            glTexEnvi(GL_TEXTURE_ENV, TA3D_GL_COMBINE_RGB_EXT,  GL_INTERPOLATE);
 
-                            glTexEnvi(GL_TEXTURE_ENV,GL_SOURCE0_RGB_EXT,GL_TEXTURE);
-                            glTexEnvi(GL_TEXTURE_ENV,GL_OPERAND0_RGB_EXT,GL_SRC_COLOR);
-                            glTexEnvi(GL_TEXTURE_ENV,GL_SOURCE1_RGB_EXT,GL_PREVIOUS_EXT);
-                            glTexEnvi(GL_TEXTURE_ENV,GL_OPERAND1_RGB_EXT,GL_SRC_COLOR);
-                            glTexEnvi(GL_TEXTURE_ENV,GL_SOURCE2_RGB_EXT,GL_CONSTANT_EXT);
-                            glTexEnvi(GL_TEXTURE_ENV,GL_OPERAND2_RGB_EXT,GL_SRC_COLOR);
-                            glTexEnvfv(GL_TEXTURE_ENV,GL_TEXTURE_ENV_COLOR,surface.RColor);
+                            glTexEnvi(GL_TEXTURE_ENV,  TA3D_GL_SOURCE0_RGB_EXT, GL_TEXTURE);
+                            glTexEnvi(GL_TEXTURE_ENV,  TA3D_GL_OPERAND0_RGB_EXT, GL_SRC_COLOR);
+                            glTexEnvi(GL_TEXTURE_ENV,  TA3D_GL_SOURCE1_RGB_EXT, TA3D_GL_PREVIOUS_EXT);
+                            glTexEnvi(GL_TEXTURE_ENV,  TA3D_GL_OPERAND1_RGB_EXT, GL_SRC_COLOR);
+                            glTexEnvi(GL_TEXTURE_ENV,  TA3D_GL_SOURCE2_RGB_EXT,TA3D_GL_CONSTANT_EXT);
+                            glTexEnvi(GL_TEXTURE_ENV,  TA3D_GL_OPERAND2_RGB_EXT,GL_SRC_COLOR);
+                            glTexEnvfv(GL_TEXTURE_ENV, GL_TEXTURE_ENV_COLOR,surface.RColor);
                         }
                         else
                         {
@@ -1942,11 +1952,16 @@ namespace TA3D
                     }
                 }
                 else
-                    for (int j = 7; j >= 0; --j)
+                {
+                    for (int j = 6; j >= 0; --j)
                     {
                         glActiveTextureARB(GL_TEXTURE0_ARB + j);
                         glDisable(GL_TEXTURE_2D);
                     }
+                    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+                    glEnable(GL_TEXTURE_2D);
+                    glBindTexture(GL_TEXTURE_2D, gfx->default_texture);
+                }
             }
             else
             {
@@ -2185,6 +2200,8 @@ namespace TA3D
                     system = particle_engine.emit_part_fast( system, *upos+*pos,Dir,p_tex, i == 0 ? -nb : 1,speed,life,2.0f,true);
                 }
             }
+			if (system)
+				delete system;
         }
         if (child)
             child->compute_coord(data_s,pos,c_part,p_tex,target,upos,M,size,center,reverse,src,src_data);
@@ -2930,7 +2947,7 @@ namespace TA3D
 
 
 
-    float OBJECT::print_struct(float Y, float X, TA3D::GfxFont& fnt)
+    float OBJECT::print_struct(float Y, float X, TA3D::Font *fnt)
     {
         gfx->print(fnt, X, Y, 0.0f,      0xFFFFFF, format("%s [%d]", name.c_str(),script_index));
         gfx->print(fnt, 320.0f, Y, 0.0f, 0xFFFFFF, format("(v:%d",   nb_vtx));
@@ -3024,7 +3041,7 @@ namespace TA3D
     }
 
 
-    void MODEL_MANAGER::create_from_2d(BITMAP *bmp,float w,float h,float max_h,const String& filename)
+    void MODEL_MANAGER::create_from_2d(SDL_Surface *bmp,float w,float h,float max_h,const String& filename)
     {
         nb_models++;
         if (nb_models > max_models)
@@ -3094,16 +3111,22 @@ namespace TA3D
                             String real_name = (char*)(data+1);
                             real_name.trim();
                             delete[] data;
+                            LOG_DEBUG("loading alternate : " << real_name);
                             data = HPIManager->PullFromHPI( real_name );
                         }
                         if (data)
                         {
-                            model[i+nb_models].load_3dm(data, e->c_str());
+                            model[i+nb_models].load_3dm(data, *e);
+                            LOG_DEBUG("model loaded");
                             delete[] data;
                             model_hashtable.insert(String::ToLower(*e), nb_models + i + 1);
                             ++i;
                         }
+                        else
+                            LOG_ERROR("could not load model " << *e);
                     }
+                    else
+                        LOG_ERROR("could not read file : " << *e);
                 }
             }
             nb_models += i;
@@ -3142,7 +3165,7 @@ namespace TA3D
                     if (data)
                     {
                         if (data_size > 0 )						// If the file isn't empty
-                            model[i+nb_models].load_3do(data,e->c_str());
+                            model[i+nb_models].load_3do(data,*e);
                         delete[] data;
                         model_hashtable.insert(String::ToLower(*e), nb_models + i + 1);
                         ++i;
@@ -3182,7 +3205,7 @@ namespace TA3D
     }
 
 
-    void MODEL::load_3dm(byte *data,const char *filename)					// Load a model in 3DM format
+    void MODEL::load_3dm(byte *data,const String &filename)					// Load a model in 3DM format
     {
         destroy();
         obj.load_3dm(data,filename);
@@ -3202,7 +3225,7 @@ namespace TA3D
     }
 
 
-    int MODEL::load_3do(byte *data,const char *filename)
+    int MODEL::load_3do(byte *data,const String &filename)
     {
         int err=obj.load_obj(data,0,0,filename);		// Charge les objets composant le modèle
         if (err == 0)
@@ -3223,7 +3246,7 @@ namespace TA3D
     }
 
 
-    void MODEL::create_from_2d(BITMAP *bmp,float w,float h,float max_h)
+    void MODEL::create_from_2d(SDL_Surface *bmp,float w,float h,float max_h)
     {
         obj.create_from_2d(bmp,w,h,max_h);
 
@@ -3243,6 +3266,10 @@ namespace TA3D
 
     void MODEL::draw(float t,SCRIPT_DATA *data_s,bool sel,bool notex,bool c_part,int p_tex,Vector3D *target,Vector3D *upos,MATRIX_4x4 *M,float Size,Vector3D* Center,bool reverse,int side,bool chg_col,OBJECT *src,SCRIPT_DATA *src_data)
     {
+        gfx->enable_model_shading();
+
+        sel &= !gfx->getShadowMapMode();        // Don't render selection primitive while in shadow map mode !! otherwise it would cast a shadow :/
+
         if (notex)
             glDisable(GL_TEXTURE_2D);
         if (chg_col)
@@ -3281,7 +3308,10 @@ namespace TA3D
                 }
             }
         }
-        if (c_part)
+
+        gfx->disable_model_shading();
+
+        if (c_part)                 // It is safe to do this even in shadow map mode because this is done only once in a while
         {
             Vector3D pos;
             obj.compute_coord(data_s,&pos,c_part,p_tex,target,upos,M,Size,Center,reverse,src,src_data);
@@ -3397,10 +3427,10 @@ namespace TA3D
         {
             // On lit le fichier contenant les informations sur l'objet
             fin = fgets(chaine, 200, fichier);
-            strupr(chaine);
-            if (!strncmp(chaine, "VERTEX", 6))
+            String s_chaine = String::ToUpper(chaine);
+            if (StartsWith(s_chaine , "VERTEX"))
             {
-                if (strncmp(chaine,"VERTEX LIST", 11))
+                if (StartsWith(s_chaine,"VERTEX LIST"))
                 {
                     // Lecture des coordonnées d'un point
                     i=6;
@@ -3436,9 +3466,9 @@ namespace TA3D
             }
             else
             {
-                if (!strncmp(chaine, "FACE", 4))
+                if (StartsWith(s_chaine, "FACE"))
                 {
-                    if (strncmp(chaine, "FACE LIST", 9))
+                    if (StartsWith(s_chaine, "FACE LIST"))
                     {
                         // Lecture d'une facette
                         i=j=4;
@@ -3473,7 +3503,7 @@ namespace TA3D
                 }
                 else
                 {
-                    if (!strncmp(chaine, "NAMED OBJECT", 12))
+                    if (StartsWith(s_chaine, "NAMED OBJECT"))
                     {
                         char *_p = (chaine + 13);
                         while (_p[0])
@@ -3670,13 +3700,13 @@ namespace TA3D
         {
             for (uint8 i = 0; i < surface.NbTex; ++i)
             {
-                BITMAP *tex;
+                SDL_Surface *tex;
                 GLint w,h;
                 glBindTexture(GL_TEXTURE_2D,surface.gltex[i]);
                 glGetTexLevelParameteriv(GL_TEXTURE_2D,0,GL_TEXTURE_WIDTH,&w);
                 glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &h);
-                tex = create_bitmap_ex(32,w,h);
-                glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA,GL_UNSIGNED_BYTE, tex->line[0]);
+                tex = gfx->create_surface_ex(32,w,h);
+                glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA,GL_UNSIGNED_BYTE, tex->pixels);
 
                 if (!compressed) // Store texture data without compression
                 {
@@ -3685,7 +3715,7 @@ namespace TA3D
                     for (int y = 0; y < tex->h; ++y)
                     {
                         for (int x = 0; x < tex->w; ++x)
-                            fwrite(&((int*)(tex->line[y]))[x], 4, 1, dst);
+                            fwrite(&SurfaceInt(tex, x, y), 4, 1, dst);
                     }
                 }
                 else
@@ -3696,37 +3726,23 @@ namespace TA3D
                     int buf_size = tex->w * tex->h * 5;
                     byte *buffer = new byte[buf_size];
 
+                    uint8 bpp = tex->format->BitsPerPixel;
+                    int w = tex->w;
+                    int h = tex->h;
+                    fwrite(&w, sizeof(w), 1, dst);
+                    fwrite(&h, sizeof(h), 1, dst);
+                    fwrite(&bpp, 1, 1, dst);
+
                     int img_size = buf_size;
-                    save_memory_jpg_ex(buffer, &img_size, tex, NULL, 85, JPG_SAMPLING_411 | JPG_OPTIMIZE, NULL);
+                    uLongf __size = img_size;
+                    compress2 ( buffer, &__size, (Bytef*) tex->pixels, tex->w * tex->h * tex->format->BytesPerPixel, 9);
+                    img_size = __size;
 
                     fwrite(&img_size, sizeof(img_size), 1, dst); // Save the result
                     fwrite(buffer, img_size, 1, dst);
-
-                    bool need_alpha = false;
-                    for (int y = 0 ; y < tex->h; ++y)
-                    {
-                        for (int x = 0; x < tex->w; ++x)
-                        {
-                            int c = geta(getpixel(tex, x, y));
-                            if (c != 255)
-                                need_alpha = true;
-                            ((uint32*)(tex->line[y]))[x] = c * 0x01010101;
-                        }
-                    }
-
-                    if (need_alpha)
-                    {
-                        putc(1, dst);		// Alpha channel has to be stored
-                        img_size = buf_size;
-                        save_memory_jpg_ex(buffer, &img_size, tex, NULL, 100, JPG_GREYSCALE | JPG_OPTIMIZE, NULL);
-                        fwrite(&img_size, sizeof(img_size), 1, dst); // Save the result
-                        fwrite(buffer, img_size, 1, dst);
-                    }
-                    else
-                        putc(0, dst);		// No alpha channel stored
                     delete[] buffer;
                 }
-                destroy_bitmap(tex);
+                SDL_FreeSurface(tex);
             }
         }
 
@@ -3781,7 +3797,7 @@ namespace TA3D
 
 
 
-    byte *OBJECT::load_3dm(byte *data, const char *filename)
+    byte *OBJECT::load_3dm(byte *data, const String &filename)
     {
         destroy();
 
@@ -3895,7 +3911,7 @@ namespace TA3D
         surface.NbTex = abs( surface.NbTex );
         for (uint8 i = 0; i < surface.NbTex; ++i)
         {
-            BITMAP *tex;
+            SDL_Surface *tex;
             if (!compressed)
             {
                 int tex_w;
@@ -3903,7 +3919,7 @@ namespace TA3D
                 data = read_from_mem(&tex_w, sizeof(tex_w), data);
                 data = read_from_mem(&tex_h, sizeof(tex_h), data);
 
-                tex = create_bitmap_ex(32, tex_w, tex_h);
+                tex = gfx->create_surface_ex(32, tex_w, tex_h);
                 if (tex == NULL)
                 {
                     destroy();
@@ -3913,7 +3929,7 @@ namespace TA3D
                 {
                     for (int y = 0; y < tex->h; ++y)
                         for (int x = 0; x < tex->w; ++x)
-                            data = read_from_mem(&((int*)(tex->line[y]))[x], 4, data);
+                            data = read_from_mem(&SurfaceInt(tex, x, y), 4, data);
                 }
                 catch(...)
                 {
@@ -3924,15 +3940,21 @@ namespace TA3D
             else
             {
                 int img_size = 0;
-                data = read_from_mem(&img_size,sizeof(img_size),data);	// Read RGB data first
+                uint8 bpp;
+                int w, h;
+                data = read_from_mem(&w,sizeof(w),data);
+                data = read_from_mem(&h,sizeof(h),data);
+                data = read_from_mem(&bpp,sizeof(bpp),data);
+                data = read_from_mem(&img_size,sizeof(img_size),data);	// Read RGBA data
                 byte *buffer = new byte[ img_size ];
 
                 try
                 {
-                    data=read_from_mem( buffer, img_size, data );
+                    data = read_from_mem( buffer, img_size, data );
 
-                    set_color_depth( 32 );
-                    tex = load_memory_jpg( buffer, img_size, NULL );
+                    tex = gfx->create_surface_ex( bpp, w, h );
+                    uLongf len = tex->w * tex->h * tex->format->BytesPerPixel;
+                    uncompress ( (Bytef*) tex->pixels, &len, (Bytef*) buffer, img_size);
                 }
                 catch( ... )
                 {
@@ -3942,75 +3964,30 @@ namespace TA3D
                 }
 
                 delete[] buffer;
-
-                byte has_alpha;									// Read alpha channel if present
-                data=read_from_mem( &has_alpha, 1, data );
-                if (has_alpha)
-                {
-                    data=read_from_mem(&img_size,sizeof(img_size),data);
-                    buffer = new byte[ img_size ];
-                    data = read_from_mem( buffer, img_size, data );
-                    BITMAP* alpha = load_memory_jpg(buffer, img_size, NULL);
-
-                    if (alpha == NULL)
-                    {
-                        destroy();
-                        return NULL;
-                    }
-                    for (int y = 0 ; y < tex->h; ++y)
-                    {
-                        for (int x = 0; x < tex->w ; ++x)
-                        {
-                            int c = getpixel( tex, x, y );
-                            putpixel( tex, x, y, makeacol( getr(c), getg(c), getb(c), alpha->line[y][x<<2]));
-                        }
-                    }
-
-                    destroy_bitmap( alpha );
-                    delete[] buffer;
-                }
-                else
-                {
-                    if (tex == NULL)
-                    {
-                        destroy();
-                        return NULL;
-                    }
-                    for (int y = 0; y < tex->h ; ++y)
-                    {
-                        for (int x = 0 ; x < tex->w ; ++x)
-                        {
-                            int c = getpixel(tex, x, y);
-                            putpixel(tex, x, y, makeacol( getr(c), getg(c), getb(c), 0xFF));
-                        }
-                    }
-                }
             }
 
             if (TA3D::model_manager.loading_all())      // We want to convert textures on-the-fly in order to speed loading
             {
-                String cache_filename = filename ? String( filename ) + format("-%s-%d.bin", !name.empty() ? name.c_str() : "none", i ) : String( "" );
+                String cache_filename = !filename.empty() ? filename + format("-%s-%d.bin", !name.empty() ? name.c_str() : "none", i ) : String( "" );
                 cache_filename = cache_filename.findAndReplace("/","S");
                 cache_filename = cache_filename.findAndReplace("\\","S");
 
                 surface.gltex[i] = 0;
                 if (!gfx->is_texture_in_cache(cache_filename))
                 {
-                    cache_filename = TA3D::Paths::Files::ReplaceExtension( cache_filename, ".tga" );
+                    cache_filename = TA3D::Paths::Files::ReplaceExtension( cache_filename, ".tex" );
                     if (!TA3D::Paths::Exists( TA3D::Paths::Caches + cache_filename ))
-                        save_bitmap( (TA3D::Paths::Caches + cache_filename).c_str(), tex, NULL );
+                        SaveTex( tex, TA3D::Paths::Caches + cache_filename );
                 }
                 tex_cache_name.push_back( cache_filename );
             }
             else            // Standard loading path (used by 3DMEditor)
             {
-                allegro_gl_use_alpha_channel(true);
-                allegro_gl_set_texture_format(GL_RGBA8);
+                gfx->set_texture_format(GL_RGBA8);
                 surface.gltex[i] = gfx->make_texture(tex, FILTER_LINEAR);
-                allegro_gl_use_alpha_channel(false);
             }
 
-            destroy_bitmap(tex);
+            SDL_FreeSurface(tex);
         }
 
         if (surface.Flag & SURFACE_GLSL) // Fragment & Vertex shaders

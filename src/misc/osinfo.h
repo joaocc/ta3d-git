@@ -19,10 +19,9 @@ namespace System
     void DisplayInformations();
 
     /*!
-    ** \brief Write informations about the current version of Allegro
-    ** and AllegroGL
+    ** \brief Write informations about the current version of SDL
     */
-    void DisplayInformationsAboutAllegro();
+    void DisplayInformationsAboutSDL();
 
     /*!
     ** \brief Desktop resolution

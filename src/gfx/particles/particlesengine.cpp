@@ -1,9 +1,11 @@
 
+#include "../../stdafx.h"
+#include "../../misc/math.h"
+#include "../gl.extensions.h"
 #include "particlesengine.h"
 #include "../../misc/matrix.h"
 #include "../../TA3D_NameSpace.h"
 #include "../../ta3dbase.h"
-#include "../../misc/math.h"
 
 
 namespace TA3D
@@ -21,7 +23,6 @@ namespace TA3D
         texcoord(NULL), color(NULL), thread_running(false), thread_ask_to_stop(false),
         p_wind_dir(NULL), p_g(NULL), particle_systems()
     {
-        InitThread();
         init(false);
     }
 
@@ -39,8 +40,8 @@ namespace TA3D
 
         dsmoke = true;
         if (NULL == partbmp)
-            partbmp = create_bitmap_ex(32, 256, 256);
-        BITMAP* bmp;
+            partbmp = gfx->create_surface_ex(32, 256, 256);
+        SDL_Surface* bmp;
         if (!filealpha.empty())
             bmp = GFX::LoadMaskedTextureToBmp(file, filealpha); // Avec canal alpha séparé
         else
@@ -50,13 +51,11 @@ namespace TA3D
 
         stretch_blit(bmp, partbmp, 0,0, bmp->w, bmp->h, 64 * (ntex & 3), 64 * (ntex >> 2), 64, 64);
         ++ntex;
-        destroy_bitmap(bmp);
+        SDL_FreeSurface(bmp);
         if (ntex > 1)
             glDeleteTextures(1, &parttex);
-        allegro_gl_use_alpha_channel(true);
-        allegro_gl_set_texture_format(GL_RGBA8);
+        gfx->set_texture_format(GL_RGBA8);
         parttex = gfx->make_texture(partbmp, FILTER_TRILINEAR);
-        allegro_gl_use_alpha_channel(false);
 
         return (ntex-1);
     }
@@ -511,20 +510,16 @@ namespace TA3D
                 if (quit)
                     break;
             }
-            pMutex.unlock();
-            pMutex.lock();
         }
+
+        pMutex.unlock();
+        pMutex.lock();
 
         uint32 i = 0;
 
         for (std::vector<PARTICLE>::iterator e = part.begin() ; e != part.end() ; )
         {
             i++;
-            if (!(i & 15) )
-            {
-                pMutex.unlock(); // Pause to give the renderer the time to work and to go at the given engine speed (in ticks per sec.)
-                pMutex.lock();
-            }
 
             e->life -= dt;
             if (e->life < 0.0f)
@@ -594,7 +589,7 @@ namespace TA3D
         if (!color)
             color = new GLubyte[16384];
 
-        cam->setView();
+        cam->setView(true);
 
         gfx->ReInitAllTex(true);
 
@@ -759,20 +754,15 @@ namespace TA3D
 
         if (load)
         {
-            partbmp = create_bitmap_ex(32,256,256);
-            BITMAP* bmp = gfx->load_image("gfx/smoke.tga");
-            // LoadMaskedTexBmp("gfx/smoke.tga","gfx/smokea.tga");
+            partbmp = gfx->create_surface_ex(32,256,256);
+            SDL_Surface* bmp = gfx->load_image("gfx/smoke.tga");
+
             gltex.push_back(gfx->make_texture(bmp));
             stretch_blit(bmp, partbmp, 0, 0, bmp->w, bmp->h, 0, 0, 64, 64);
             ntex = 1;
-            destroy_bitmap(bmp);
-            allegro_gl_use_alpha_channel(true);
-            allegro_gl_set_texture_format(GL_RGBA8);
-            parttex=allegro_gl_make_texture(partbmp);
-            allegro_gl_use_alpha_channel(false);
-            glBindTexture(GL_TEXTURE_2D, parttex);
-            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR);
+            SDL_FreeSurface(bmp);
+            gfx->set_texture_format(GL_RGBA8);
+            parttex = gfx->make_texture(partbmp, FILTER_TRILINEAR);
         }
         size=0;
         nb_part=0;
@@ -798,7 +788,7 @@ namespace TA3D
         particle_systems.clear();
 
         if (partbmp)
-            destroy_bitmap(partbmp);
+            SDL_FreeSurface(partbmp);
         partbmp = NULL;
         ntex = 0;
         if (dsmoke)
@@ -823,7 +813,7 @@ namespace TA3D
 
 
 
-    int PARTICLE_ENGINE::Run()
+    void PARTICLE_ENGINE::proc(void*)
     {
         thread_running = true;
         float dt = 1.0f / TICKS_PER_SEC;
@@ -849,11 +839,10 @@ namespace TA3D
         thread_ask_to_stop = false;
         LOG_INFO("Particle engine: " << (float)(counter * 1000) / (msec_timer - particle_timer)
                  << " ticks/sec.");
-        return 0;
     }
 
 
-    void PARTICLE_ENGINE::SignalExitThread()
+    void PARTICLE_ENGINE::signalExitThread()
     {
         if (thread_running )
             thread_ask_to_stop = true;

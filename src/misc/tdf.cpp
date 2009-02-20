@@ -1,4 +1,5 @@
-
+#include "../stdafx.h"
+#include "../gfx/gfx.toolkit.h"
 #include "tdf.h"
 #include "files.h"
 #include "../ta3dbase.h"
@@ -47,13 +48,13 @@ namespace TA3D
 
 
     TDFParser::TDFParser()
-        :pTableSize(4096), pTableIsEmpty(true), pIgnoreCase(true)
+        :pTableSize(4096), pTableIsEmpty(true), pIgnoreCase(true), special_section()
     {
         pTable.initTable(4096);
     }
 
     TDFParser::TDFParser(const String& filename, const bool caSensitive, const bool toUTF8, const bool gadgetMode, const bool realFS)
-        :pTableSize(4096), pTableIsEmpty(true), pIgnoreCase(!caSensitive)
+        :pTableSize(4096), pTableIsEmpty(true), pIgnoreCase(!caSensitive), special_section()
     {
         pTable.initTable(4096);
         loadFromFile(filename, true, toUTF8, gadgetMode, realFS);
@@ -68,6 +69,7 @@ namespace TA3D
         pTable.emptyHashTable();
         pTable.initTable(pTableSize);
         pTableIsEmpty = true;
+        special_section.clear();
     }
 
 
@@ -142,7 +144,7 @@ namespace TA3D
             clear();
 
         StackInfos stack;
-        stack.gadgetMode = gadgetMode ? 0 /* The first index */ : -1 /* means disabled */; 
+        stack.gadgetMode = gadgetMode ? 0 /* The first index */ : -1 /* means disabled */;
         stack.caption = caption;
 
         uint32 pos(0);
@@ -161,7 +163,7 @@ namespace TA3D
                 if (stringStarted)
                 {
                     stringStarted = false;
-    
+
                     if (pos + 1 == size)
                     {
                         String::ToKeyValue(String(data + lastPos, pos - lastPos + 1), stack.key, stack.value,
@@ -181,7 +183,7 @@ namespace TA3D
                             if (pIgnoreCase)
                                 stack.value.toLower();
                             stack.sections.push(stack.currentSection);
-                            
+
                             stack.value = ReplaceString( stack.value, "\\n", "\n", false);
                             stack.value = ReplaceString( stack.value, "\\r", "\r", false);
 
@@ -199,6 +201,8 @@ namespace TA3D
                             else
                                 stack.currentSection += ".";
                             stack.currentSection += stack.value;
+                            if (stack.gadgetMode < 0 && !exists(stack.currentSection) )
+                                pTable.insertOrUpdate(stack.currentSection, stack.value);
                             ++stack.level;
                             continue;
                         }
@@ -230,10 +234,13 @@ namespace TA3D
                             continue;
                         }
                         // Do not store empty keys in the table
-                        if (!clearTable || !stack.value.empty())
+                        if (!stack.key.empty())
                         {
                             stack.value = ReplaceString( stack.value, "\\n", "\n", false);
                             stack.value = ReplaceString( stack.value, "\\r", "\r", false);
+
+                            if (!special_section.empty() && (stack.currentSection.match("*." + special_section) || stack.currentSection == special_section))
+                                pTable.insertOrUpdate(stack.currentSection, pullAsString(stack.currentSection) << "," << stack.key);
 
                             String realKey(stack.currentSection);
                             realKey << "." << stack.key;
@@ -250,6 +257,10 @@ namespace TA3D
         return true;
     }
 
+    void TDFParser::setSpecialSection(const String &section)
+    {
+        special_section = section;
+    }
 
     sint32 TDFParser::pullAsInt(const String& key, const sint32 def)
     {
@@ -261,9 +272,9 @@ namespace TA3D
         String iterFind = pTable.find(keyToFind);
         return ((iterFind.empty())
                 ? def
-                : (iterFind.size() == 10 && ustrtol(iterFind.substr(0,4).c_str(), NULL, 0) > 127
-                   ? (0xFF000000 | ustrtol( ("0x"+iterFind.substr(4,6)).c_str(), NULL, 0))
-                   : ustrtol(iterFind.c_str() , NULL, 0)));		// Uses ustrtol to deal with hexa numbers
+                : (iterFind.size() == 10 && String(iterFind.substr(0,4)).toUInt32() > 127
+                   ? (0xFF000000 | String("0x"+ iterFind.substr(4,6)).toUInt32())
+                   : iterFind.toInt32()));		// Uses ustrtol to deal with hexa numbers
     }
 
     real32 TDFParser::pullAsFloat(const String& key, const real32 def)
@@ -315,6 +326,17 @@ namespace TA3D
 
     }
 
+    uint32 TDFParser::pullAsColor(const String& key, const uint32 def)
+    {
+        String str = pullAsString(key);
+        String::Vector params;
+        str.split( params, "," );
+        if (params.size() < 3)
+            return def;
+        if (params.size() == 3)
+            return makeacol( params[0].toUInt32(), params[1].toUInt32(), params[2].toUInt32(), 0xFF );
+        return makeacol( params[0].toUInt32(), params[1].toUInt32(), params[2].toUInt32(), params[3].toUInt32() );
+    }
 
 } // namespace TA3D
 

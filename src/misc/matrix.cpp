@@ -3,56 +3,7 @@
 
 
 
-const MATRIX_4x4 MATRIX_4x4::operator = (const MATRIX_f& b)
-{
-    int i,e;
-    for(i = 0; i < 3; ++i)
-    {
-        for(e = 0; e < 3; ++e)
-            E[i][e] = b.v[e][i];
-    }
-    E[3][0] = E[3][1] = E[3][2] = 0.0f;
-    E[3][3] = 1.0f;
 
-    for(i = 0; i < 3; ++i)
-        E[i][3]=b.t[i];
-
-    return (*this);
-}
-
-
-const MATRIX_4x4 MATRIX_4x4::operator=(const MATRIX& b)
-{
-    int i,e;
-    for(i = 0; i < 3; ++i)
-    {
-        for(e = 0;e < 3; ++e)
-            E[i][e] = fixtof(b.v[e][i]);
-    }
-    E[3][0] = E[3][1] = E[3][2] = 0.0f;
-    E[3][3] = 1.0f;
-
-    for(i = 0;i < 3; ++i)
-        E[i][3] = fixtof(b.t[i]);
-
-    return (*this);
-}
-
-
-
-MATRIX_4x4::operator MATRIX_f() const
-{
-    int i,e;
-    MATRIX_f A;
-    for(i = 0; i < 3; ++i)
-        for(e = 0;e < 3; ++e)
-            A.v[e][i] = E[i][e];
-
-    for(i = 0; i < 3; ++i)
-        A.t[i] = E[i][3];
-
-    return A;
-}
 
 MATRIX_4x4 Transpose(const MATRIX_4x4 &A)
 {

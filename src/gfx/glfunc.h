@@ -17,22 +17,24 @@
 
 /*--------------------------------------------------------------\
 |                          glfunc.h                             |
-|      contient les fonctions et les variables permettant d'    |
-|  utiliser des extensions d'OpenGl. utilise AllegroGl          |
+|      contains functions and variables to set up an OpenGL     |
+|  environnement using some OpenGL extensions.                  |
 \--------------------------------------------------------------*/
 
 #ifndef __TA3D_GFX_GL_FUNCTIONS_H__
 # define __TA3D_GFX_GL_FUNCTIONS_H__
 
 #include "../stdafx.h"
+#include "gl.extensions.h"
 #include <stdio.h>
 
 extern bool	MultiTexturing;
 extern bool g_useTextureCompression;
 extern bool g_useStencilTwoSide;
-extern bool g_useCopyDepthToColor;
 extern bool g_useProgram;
 extern bool g_useFBO;
+extern bool g_useGenMipMaps;
+extern bool g_useNonPowerOfTwoTextures;
 
 /*!
 ** \brief Try to enable some specific OpenGL extensions

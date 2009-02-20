@@ -16,13 +16,10 @@
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA*/
 
 /*----------------------------------------------------------------------\
-  |                               console.cpp                             |
-  |      contient les classes nécessaires à la gestion d'une console dans |
-  | programme utilisant Allegro avec ou sans AllegroGL. La console        |
-  | dispose de sa propre procédure d'entrée et d'affichage mais celle-ci  |
-  | nécessite d'être appellée manuellement pour éviter les problèmes      |
-  | découlant d'un appel automatique par un timer.                        |
-  \----------------------------------------------------------------------*/
+|                               console.cpp                             |
+|      This module is responsible for the Console object, useful tool   |
+| for developpers and testers.                                          |
+\----------------------------------------------------------------------*/
 
 #include "stdafx.h"
 #include "TA3D_NameSpace.h"
@@ -41,7 +38,7 @@ namespace TA3D
 
 
     Console::Console()
-        :pMaxItemsToDisplay(15), pVisible(0.0f), pShow(false)
+        :pMaxItemsToDisplay(15), pVisible(0.0f), pShow(false), cursorPos(0)
     {
         pInputText.clear();
     }
@@ -71,7 +68,7 @@ namespace TA3D
 
 
 
-    String Console::draw(TA3D::GfxFont& fnt, const float dt, float fsize, const bool forceShow)
+    String Console::draw(TA3D::Font *fnt, const float dt, const bool forceShow)
     {
         MutexLocker locker(pMutex);
 
@@ -109,17 +106,17 @@ namespace TA3D
             }
         }
 
-        set_uformat(U_UTF8);
-        char keyb = 0;
-        int keycode = 0;
+        uint16 keyb = 0;
+        uint32 keycode = 0;
 
         if (keypressed())
         {
             keycode = readkey();
-            keyb = keycode & 0xFF;
+            keyb = keycode & 0xFFFF;
+            keycode >>= 16;
         }
 
-        ++fsize;
+        float fsize = fnt->height();
         float maxh = fsize * pLastEntries.size() * pVisible + 5.0f;
 
         String newline;
@@ -134,30 +131,22 @@ namespace TA3D
         glColor4f(0.75f, 0.75f, 0.608f, 0.75f);
         gfx->line(SCREEN_W, maxh, 0, maxh);
 
-        glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+        glColor4ub(0xFF, 0xFF, 0xFF, 0xFF);
         glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
         glEnable(GL_TEXTURE_2D);
         glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_MODULATE);
 
         // Print all lines
         int i = 0;
-        for (String::List::const_iterator i_entry = pLastEntries.begin(); i_entry != pLastEntries.end(); ++i_entry) 
+        for (String::List::const_iterator i_entry = pLastEntries.begin(); i_entry != pLastEntries.end(); ++i_entry)
         {
             gfx->print(fnt, 0.0f, maxh - fsize * (pLastEntries.size() + 1 - i) - 5.0f, 0.0f,
-                       0xAFAFAFAF, ">" + *i_entry);
+                       0xDFDFDFDF, ">" + *i_entry);
             ++i;
         }
 
-        gfx->print(fnt, 0.0f, maxh - fsize - 5.0f, 0.0f, 0xFFFFFFFF, ">" + pInputText + "_" );
-
-        if (keyb == 13)
-        {
-            pLastCommands.push_back(pInputText);
-            pHistoryPos = pLastCommands.size();
-            addEntry(pInputText);
-            newline = pInputText;
-            pInputText.clear();
-        }
+        gfx->print(fnt, 0.0f, maxh - fsize - 5.0f, 0.0f, 0xFFFFFFFF, ">" + pInputText );
+        gfx->print(fnt, fnt->length(">" + pInputText.substrUTF8(0, cursorPos)), maxh - fsize - 5.0f, 0.0f, 0xFFFFFFFF, "_" );
 
         if (pHistoryPos < 0)
 			pHistoryPos = 0;
@@ -167,35 +156,72 @@ namespace TA3D
 				pHistoryPos = pLastCommands.size();
 		}
 
-        if (keyb == 0 && (keycode >> 8) == KEY_UP && pHistoryPos > 0)
-		{
-			--pHistoryPos;
-			pInputText = pLastCommands[pHistoryPos];
-		}
-		else
-		{
-			if (keyb == 0 && (keycode >> 8) == KEY_DOWN && pHistoryPos < (int)pLastCommands.size())
-			{
-				++pHistoryPos;
-				if (pHistoryPos < (int)pLastCommands.size())
-					pInputText = pLastCommands[pHistoryPos];
-				else
-					pInputText.clear();
-			}
-		}
-
-		if (keyb == 8 && pInputText.size() > 0)
-			pInputText.resize(pInputText.size() - 1);
-
-        if ((keyb >= '0' && keyb <= '9') ||  (keyb >= 'a' && keyb <= 'z') || 
-            (keyb >= 'A' && keyb <= 'Z') || 
-            keyb == 32 || keyb == '_' || keyb == '+' || keyb == '-' || keyb == '.') 
+        switch(keycode)
         {
-            if (pInputText.size() < 199) 
-                pInputText << keyb;
-        }
+        case KEY_ENTER:
+            pLastCommands.push_back(pInputText);
+            pHistoryPos = pLastCommands.size();
+            addEntry(pInputText);
+            newline = pInputText;
+            pInputText.clear();
+            cursorPos = 0;
+            break;
+        case KEY_BACKSPACE:
+            if (pInputText.size() > 0 && cursorPos > 0)
+            {
+                pInputText = pInputText.substrUTF8(0, cursorPos - 1) + pInputText.substrUTF8(cursorPos, pInputText.sizeUTF8() - cursorPos);
+                cursorPos--;
+            }
+            break;
+        case KEY_DEL:
+            if (cursorPos < pInputText.sizeUTF8())
+                pInputText = pInputText.substrUTF8(0, cursorPos) + pInputText.substrUTF8(cursorPos + 1, pInputText.sizeUTF8() - cursorPos);
+            break;
+        case KEY_END:
+            cursorPos = pInputText.sizeUTF8();
+            break;
+        case KEY_HOME:
+            cursorPos = 0;
+            break;
+        case KEY_LEFT:
+            if (cursorPos > 0)
+                cursorPos--;
+            break;
+        case KEY_RIGHT:
+            if (cursorPos < pInputText.sizeUTF8())
+                cursorPos++;
+            break;
+        case KEY_UP:
+            if (pHistoryPos > 0)
+            {
+                --pHistoryPos;
+                pInputText = pLastCommands[pHistoryPos];
+                cursorPos = pInputText.sizeUTF8();
+            }
+            break;
+        case KEY_DOWN:
+            if (pHistoryPos < (int)pLastCommands.size())
+            {
+                ++pHistoryPos;
+                if (pHistoryPos < (int)pLastCommands.size())
+                    pInputText = pLastCommands[pHistoryPos];
+                else
+                    pInputText.clear();
+                cursorPos = pInputText.sizeUTF8();
+            }
+            break;
+        case KEY_TILDE:
+        case KEY_ESC:
+            break;
+        default:
+            if (keyb != 0 && pInputText.sizeUTF8() < 199)
+            {
+                pInputText = pInputText.substrUTF8(0, cursorPos) + InttoUTF8(keyb) + pInputText.substrUTF8(cursorPos, pInputText.sizeUTF8() - cursorPos);
+                cursorPos++;
+            }
+        };
+
         glDisable(GL_BLEND);
-        set_uformat(U_ASCII);
 
         if (forceShow)
         {

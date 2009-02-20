@@ -19,14 +19,14 @@
 #ifndef __TA3D_ENGINE_H__
 # define __TA3D_ENGINE_H__
 
-#include "threads/cThread.h"
+#include "threads/thread.h"
 
 namespace TA3D
 {
-	class cTA3D_Engine : public ObjectSync, public cThread
+	class cTA3D_Engine : public ObjectSync, public Thread
 	{
 	private:
-		bool m_AllegroRunning;
+		bool m_SDLRunning;
 		bool m_GFXModeActive;
 		bool m_SignaledToStop;
 
@@ -34,15 +34,15 @@ namespace TA3D
 		void Init();
 
 	protected:
-		int Run();
-		void SignalExitThread();
+		void proc(void*);
+		void signalExitThread();
 
 	public:
 		cTA3D_Engine( void );
 		virtual ~cTA3D_Engine( void );
 
 		bool GFXModeActive() const { return m_GFXModeActive; }
-		bool AllegroRunning() const { return m_AllegroRunning; }
+		bool SDLRunning() const { return m_SDLRunning; }
 	};
 
 

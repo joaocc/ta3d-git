@@ -108,33 +108,20 @@ namespace TA3D
         glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_MODULATE);
         glBlendFunc(GL_ONE,GL_ONE_MINUS_SRC_COLOR);
 
-        char buf[100];
         gfx->print(gfx->small_font,ta3dSideData.side_int_data[ players.side_view ].MetalNum.x1,ta3dSideData.side_int_data[ players.side_view ].MetalNum.y1,0.0f,ta3dSideData.side_int_data[ players.side_view ].metal_color,format("%d",(int)metal[_id]));
-        uszprintf(buf,100,"%f",metal_t[_id]);
-        if (strstr(buf,"."))
-            *(strstr(buf,".") + 2) = 0;
-        gfx->print(gfx->small_font,ta3dSideData.side_int_data[ players.side_view ].MetalProduced.x1,ta3dSideData.side_int_data[ players.side_view ].MetalProduced.y1,0.0f,ta3dSideData.side_int_data[ players.side_view ].metal_color,buf);
+        gfx->print(gfx->small_font,ta3dSideData.side_int_data[ players.side_view ].MetalProduced.x1,ta3dSideData.side_int_data[ players.side_view ].MetalProduced.y1,0.0f,ta3dSideData.side_int_data[ players.side_view ].metal_color,format("%.2f", metal_t[_id]));
 
-        uszprintf(buf,100,"%f",metal_u[_id]);
-        if (strstr(buf,"."))
-            *(strstr(buf, ".") + 2) = 0;
-        gfx->print(gfx->small_font,ta3dSideData.side_int_data[ players.side_view ].MetalConsumed.x1,ta3dSideData.side_int_data[ players.side_view ].MetalConsumed.y1,0.0f,ta3dSideData.side_int_data[ players.side_view ].metal_color,buf);
+        gfx->print(gfx->small_font,ta3dSideData.side_int_data[ players.side_view ].MetalConsumed.x1,ta3dSideData.side_int_data[ players.side_view ].MetalConsumed.y1,0.0f,ta3dSideData.side_int_data[ players.side_view ].metal_color,format("%.2f", metal_u[_id]));
         gfx->print(gfx->small_font,ta3dSideData.side_int_data[ players.side_view ].Metal0.x1,ta3dSideData.side_int_data[ players.side_view ].Metal0.y1,0.0f,ta3dSideData.side_int_data[ players.side_view ].metal_color,"0");
         gfx->print_right(gfx->small_font,ta3dSideData.side_int_data[ players.side_view ].MetalMax.x1,ta3dSideData.side_int_data[ players.side_view ].MetalMax.y1,0.0f,ta3dSideData.side_int_data[ players.side_view ].metal_color, format( "%d", metal_s[_id] ) );
         gfx->print(gfx->small_font,ta3dSideData.side_int_data[ players.side_view ].EnergyNum.x1,ta3dSideData.side_int_data[ players.side_view ].EnergyNum.y1,0.0f,ta3dSideData.side_int_data[ players.side_view ].energy_color,format("%d",(int)energy[_id]));
 
-        uszprintf(buf,100,"%f",energy_t[_id]);
-        if (strstr(buf, "."))
-            *(strstr(buf, ".") + 2) = 0;
         gfx->print(gfx->small_font,ta3dSideData.side_int_data[players.side_view].EnergyProduced.x1,
                    ta3dSideData.side_int_data[players.side_view].EnergyProduced.y1, 0.0f,
                    ta3dSideData.side_int_data[players.side_view ].energy_color,
-                   buf);
+                   format("%.2f", energy_t[_id]));
 
-        uszprintf(buf, 100, "%f", energy_u[_id]);
-        if (strstr(buf, "."))
-            *(strstr(buf, ".") + 2) = 0;
-        gfx->print(gfx->small_font,ta3dSideData.side_int_data[ players.side_view ].EnergyConsumed.x1,ta3dSideData.side_int_data[ players.side_view ].EnergyConsumed.y1,0.0f,ta3dSideData.side_int_data[ players.side_view ].energy_color,buf);
+        gfx->print(gfx->small_font,ta3dSideData.side_int_data[ players.side_view ].EnergyConsumed.x1,ta3dSideData.side_int_data[ players.side_view ].EnergyConsumed.y1,0.0f,ta3dSideData.side_int_data[ players.side_view ].energy_color,format("%.2f", energy_u[_id]));
         gfx->print(gfx->small_font,ta3dSideData.side_int_data[ players.side_view ].Energy0.x1,ta3dSideData.side_int_data[ players.side_view ].Energy0.y1,0.0f,ta3dSideData.side_int_data[ players.side_view ].energy_color,"0");
         gfx->print_right(gfx->small_font,ta3dSideData.side_int_data[ players.side_view ].EnergyMax.x1,ta3dSideData.side_int_data[ players.side_view ].EnergyMax.y1,0.0f,ta3dSideData.side_int_data[ players.side_view ].energy_color, format( "%d", energy_s[_id] ) );
 
@@ -268,10 +255,10 @@ namespace TA3D
 
 
 
-    int PLAYERS::Run()
+    void PLAYERS::proc(void*)
     {
         if (thread_is_running)
-            return 0;
+            return;
 
         thread_is_running = true;
 
@@ -307,10 +294,9 @@ namespace TA3D
         }
 
         thread_is_running = false;
-        return 0;
     }
 
-    void PLAYERS::SignalExitThread()
+    void PLAYERS::signalExitThread()
     {
         thread_ask_to_stop = true;
         while (thread_is_running)
@@ -325,7 +311,7 @@ namespace TA3D
         for (byte i = 0; i < nb_player; ++i)
         {
             if (control[i] == PLAYER_CONTROL_LOCAL_AI && ai_command)
-                ai_command[i].DestroyThread();
+                ai_command[i].destroyThread();
         }
     }
 
@@ -434,8 +420,6 @@ namespace TA3D
         thread_is_running = false;
         thread_ask_to_stop = false;
 
-        InitThread();
-
         ai_command = new AI_PLAYER[TA3D_PLAYERS_HARD_LIMIT];
         init();
     }
@@ -464,7 +448,7 @@ namespace TA3D
         if (ai_command)
             delete[] ai_command;
         ai_command = NULL;
-        DestroyThread();
+        destroyThread();
     }
 
 

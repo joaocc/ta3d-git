@@ -19,7 +19,7 @@ namespace TA3D
     {
         LOG_INFO("Aborting now. Releasing all resources...");
 
-        // allegro_exit(); // Should not be needed since allegro_init() installs it as an atexit() routine 
+        // SDL_Quit(); // Should not be needed since SDL_Quit is installed as an atexit() routine
 
         DELETEANDNIL(TA3D::VARS::lp_CONFIG);
 
@@ -41,14 +41,15 @@ namespace TA3D
             exit(1);
         TA3D::Resources::Initialize();
 
-        // Install our atexit function before allegro
-        // Like this, allegro_exit() will be called before Finalize()
+        // Install our atexit function before SDL
+        // Like this, SDL_Quit() will be called before Finalize()
         atexit(Finalize);
-        allegro_init();
+        SDL_Init(SDL_INIT_VIDEO);
+        atexit(Finalize);
 
         // Display usefull infos for debugging
         System::DisplayInformations();
-        System::DisplayInformationsAboutAllegro();
+        System::DisplayInformationsAboutSDL();
     }
 
 

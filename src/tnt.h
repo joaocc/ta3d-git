@@ -55,7 +55,7 @@ namespace TA3D
     	byte bytes[sizeof(TNTHEADER)];
     	TNTHEADER header;
     };
-    
+
     #define TNTMINIMAP_WIDTH  252
     #define TNTMINIMAP_HEIGHT 252
 
@@ -82,7 +82,7 @@ namespace TA3D
     GLuint load_tnt_minimap_fast(const String& filename, int& sw, int& sh);		// Charge une minimap d'une carte contenue dans une archive HPI/UFO
 
                                                                     // Load a minimap from a map file extracted from a HPI archive
-    BITMAP *load_tnt_minimap_fast_bmp(const String& filename);		// Charge une minimap d'une carte contenue dans une archive HPI/UFO
+    SDL_Surface *load_tnt_minimap_fast_bmp(const String& filename);		// Charge une minimap d'une carte contenue dans une archive HPI/UFO
 
 
 } // namespace TA3D

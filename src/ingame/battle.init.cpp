@@ -282,7 +282,7 @@ namespace TA3D
     bool Battle::initIntermediateCleanup()
     {
         LOG_DEBUG(LOG_PREFIX_BATTLE << "Freeing unused memory");
-        // loading(400.0f / 7.0f, I18N::Translate("Free unused memory"));
+        loading(400.0f / 7.0f, I18N::Translate("Free unused memory"));
         texture_manager.destroy();
         return true;
     }
@@ -293,7 +293,6 @@ namespace TA3D
         loading(500.0f / 7.0f, I18N::Translate("Initialising engine"));
         gfx->SetDefState();
         particle_engine.init();
-        set_palette(pal);
         return true;
     }
 
@@ -335,7 +334,7 @@ namespace TA3D
         if (!pGameData->use_only.empty()) 			// We are told not to use all units !!
         {
             LOG_DEBUG(LOG_PREFIX_BATTLE << "Loading restrictions...");
-            cTAFileParser useonly_parser(pGameData->use_only, false, false, true); // In gadgets mode so we can read the special key :)
+            TDFParser useonly_parser(pGameData->use_only, false, false, true); // In gadgets mode so we can read the special key :)
             for (int i = 0; i < unit_manager.nb_unit ; i++)
                 unit_manager.unit_type[i]->not_used = true;
             String unit_name;
@@ -443,10 +442,10 @@ namespace TA3D
             {
                 gfx->destroy_texture(map->lava_map);
 
-                BITMAP *tmp = create_bitmap_ex(32, 16, 16);
-                clear_to_color(tmp, 0xFFFFFFFF);
+                SDL_Surface *tmp = gfx->create_surface_ex(32, 16, 16);
+                SDL_FillRect(tmp, NULL, 0xFFFFFFFF);
                 map->lava_map = gfx->make_texture(tmp);
-                destroy_bitmap(tmp);
+                SDL_FreeSurface(tmp);
             }
             delete[] map_file;
         }
@@ -613,11 +612,9 @@ namespace TA3D
                 water_simulator_reflec.load("shaders/water_sim_reflec.frag","shaders/water.vert");
 			}
 
-			allegro_gl_use_alpha_channel(true);
+			gfx->set_texture_format(GL_RGBA8);
 
-			allegro_gl_set_texture_format(GL_RGBA8);
-
-			BITMAP* tmp = create_bitmap_ex(32,512,512);
+			SDL_Surface* tmp = gfx->create_surface_ex(32,512,512);
 
 			// Water transparency
 			transtex = gfx->make_texture( tmp, FILTER_LINEAR);
@@ -709,23 +706,23 @@ namespace TA3D
 							DX = 255.0f;
 					}
 
-					tmp->line[z][(x<<2)] = (int)(DX);
-					tmp->line[z][(x<<2)+1] = (int)((127.0f / L) + 127.0f);
-					tmp->line[z][(x<<2)+2] = 0;
-					tmp->line[z][(x<<2)+3] = 0;
+					SurfaceByte(tmp,(x<<2),z) = (int)(DX);
+					SurfaceByte(tmp,(x<<2)+1,z) = (int)((127.0f / L) + 127.0f);
+					SurfaceByte(tmp,(x<<2)+2,z) = 0;
+					SurfaceByte(tmp,(x<<2)+3,z) = 0;
 				}
 			}
 
-			allegro_gl_set_texture_format(GL_RGB8);
+			gfx->set_texture_format(GL_RGB8);
 			water = gfx->make_texture( tmp, FILTER_LINEAR, false);
-			destroy_bitmap(tmp);
+			SDL_FreeSurface(tmp);
 			glBindFramebufferEXT(GL_FRAMEBUFFER_EXT,0);
 
 			// Enable the texture compression
 			if (g_useTextureCompression && lp_CONFIG->use_texture_compression)
-				allegro_gl_set_texture_format(GL_COMPRESSED_RGB_ARB);
+				gfx->set_texture_format(GL_COMPRESSED_RGB_ARB);
 			else
-				allegro_gl_set_texture_format(GL_RGB8);
+				gfx->set_texture_format(GL_RGB8);
 		}
 
         // A few things required by (pseudo-)instancing code to render highlighted objects
@@ -795,23 +792,12 @@ namespace TA3D
 		can_be_there = false;
 
         // Detect current screen shot number
-        char nom[100];
-        nom[0]=0;
-        strcat(nom,"ta3d-shoot000000");
-        int l = strlen(nom);
-
         nb_shoot = -1;
 		shoot = false;
         do
         {
             nb_shoot = (nb_shoot+1)%1000000;
-            nom[l - 6] = '0' + ((nb_shoot / 100000) % 10);
-            nom[l - 5] = '0' + ((nb_shoot / 10000) % 10);
-            nom[l - 4] = '0' + ((nb_shoot / 1000) % 10);
-            nom[l - 3] = '0' + ((nb_shoot / 100) % 10);
-            nom[l - 2] = '0' + ((nb_shoot / 10) % 10);
-            nom[l - 1] = '0' + (nb_shoot % 10);
-        }while(TA3D::Paths::Exists(TA3D::Paths::Screenshots + nom + ".jpg") && nb_shoot != 999999);
+        }while(TA3D::Paths::Exists(TA3D::Paths::Screenshots + format("ta3d-shoot%.6d.tga", nb_shoot)) && nb_shoot != 999999);
 
 		return true;
 	}

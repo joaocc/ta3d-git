@@ -11,6 +11,9 @@
 #include "../logs/logs.h"
 #include <unistd.h>
 #include <fstream>
+#include <sys/types.h>
+#include <dirent.h>
+#include <errno.h>
 
 
 
@@ -332,50 +335,107 @@ namespace Paths
     }
 
     template<class T>
-    bool TmplGlob(T& out, const String& pattern, const bool emptyListBefore, const uint32 fileAttribs = FA_ALL, const uint32 required = 0)
+    bool TmplGlob(T& out, const String& pattern, const bool emptyListBefore, const uint32 fileAttribs = FA_ALL, const uint32 required = 0, const bool relative = false)
     {
         if (emptyListBefore)
             out.clear();
-        struct al_ffblk info;
-        if (al_findfirst(pattern.c_str(), &info, fileAttribs) != 0)
-            return false;
+
         String root = ExtractFilePath(pattern);
-        do
+        String root_path = root;
+        if (root.size() > 1 && (root[ root.size() - 1 ] == '/' || root[ root.size() - 1 ] == '\\'))
+            root_path.resize(root_path.size()-1);
+
+#ifdef TA3D_PLATFORM_WINDOWS
+        String strFilePath; // Filepath
+        String strExtension; // Extension
+        HANDLE hFile; // Handle to file
+        WIN32_FIND_DATA FileInformation; // File information
+
+        hFile = ::FindFirstFile(pattern.c_str(), &FileInformation);
+        if(hFile != INVALID_HANDLE_VALUE)
         {
-            if((info.attrib&required) == required && String(info.name) != "." && String(info.name) != "..")
-                out.push_back(root + (const char*)info.name);
-        } while (al_findnext(&info) == 0);
+            do
+            {
+                if(FileInformation.cFileName[0] != '.')
+                {
+                    String name = FileInformation.cFileName;
+
+                    if((FileInformation.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && (fileAttribs & FA_DIREC) && !(required & FA_FILE))
+                    {
+                        if (relative)
+                            out.push_back(name);
+                        else
+                            out.push_back(root + name);
+                    }
+                    else if (!(required & FA_DIREC) && (fileAttribs & FA_FILE))
+                    {
+                        if (relative)
+                            out.push_back(name);
+                        else
+                            out.push_back(root + name);
+                    }
+                }
+            } while(::FindNextFile(hFile, &FileInformation) == TRUE);
+
+            // Close handle
+            ::FindClose(hFile);
+        }
+#else
+        String filename_pattern = String::ToUpper(ExtractFileName(pattern));
+        DIR *dp;
+        struct dirent *dirp;
+        if((dp  = opendir(root_path.c_str())) == NULL)
+        {
+            // Following line is commented out because it may be useful later, but for now it only floods the logs
+//            LOG_ERROR( LOG_PREFIX_PATHS << "opening " << root << " failed: " << strerror( errno ) );
+            return true;
+        }
+
+        while ((dirp = readdir(dp)) != NULL)
+        {
+            String name = dirp->d_name;
+            if ((dirp->d_type & required) == required && name != "." && name != ".." && String::ToUpper(name).match(filename_pattern))
+            {
+                if (relative)
+                    out.push_back(name);
+                else
+                    out.push_back(root + name);
+            }
+        }
+        closedir(dp);
+#endif
+
         return !out.empty();
     }
 
-    bool Glob(String::List& out, const String& pattern, const bool emptyListBefore)
+    bool Glob(String::List& out, const String& pattern, const bool emptyListBefore, const bool relative)
     {
-        return TmplGlob< String::List >(out, pattern, emptyListBefore);
+        return TmplGlob< String::List >(out, pattern, emptyListBefore, FA_ALL, 0, relative);
     }
 
-    bool Glob(String::Vector& out, const String& pattern, const bool emptyListBefore)
+    bool Glob(String::Vector& out, const String& pattern, const bool emptyListBefore, const bool relative)
     {
-        return TmplGlob< String::Vector >(out, pattern, emptyListBefore);
+        return TmplGlob< String::Vector >(out, pattern, emptyListBefore, FA_ALL, 0, relative);
     }
 
-    bool GlobFiles(String::List& out, const String& pattern, const bool emptyListBefore)
+    bool GlobFiles(String::List& out, const String& pattern, const bool emptyListBefore, const bool relative)
     {
-        return TmplGlob< String::List >(out, pattern, emptyListBefore, FA_RDONLY | FA_HIDDEN | FA_SYSTEM | FA_ARCH);
+        return TmplGlob< String::List >(out, pattern, emptyListBefore, FA_FILE, 0, relative);
     }
 
-    bool GlobFiles(String::Vector& out, const String& pattern, const bool emptyListBefore)
+    bool GlobFiles(String::Vector& out, const String& pattern, const bool emptyListBefore, const bool relative)
     {
-        return TmplGlob< String::Vector >(out, pattern, emptyListBefore, FA_RDONLY | FA_HIDDEN | FA_SYSTEM | FA_ARCH);
+        return TmplGlob< String::Vector >(out, pattern, emptyListBefore, FA_FILE, 0, relative);
     }
 
-    bool GlobDirs(String::List& out, const String& pattern, const bool emptyListBefore)
+    bool GlobDirs(String::List& out, const String& pattern, const bool emptyListBefore, const bool relative)
     {
-        return TmplGlob< String::List >(out, pattern, emptyListBefore, FA_ALL, FA_DIREC);
+        return TmplGlob< String::List >(out, pattern, emptyListBefore, FA_ALL, FA_DIREC, relative);
     }
 
-    bool GlobDirs(String::Vector& out, const String& pattern, const bool emptyListBefore)
+    bool GlobDirs(String::Vector& out, const String& pattern, const bool emptyListBefore, const bool relative)
     {
-        return TmplGlob< String::Vector >(out, pattern, emptyListBefore, FA_ALL, FA_DIREC);
+        return TmplGlob< String::Vector >(out, pattern, emptyListBefore, FA_ALL, FA_DIREC, relative);
     }
 
 

@@ -45,7 +45,7 @@ namespace TA3D
 
     void INGAME_WEAPONS::destroy()
     {
-        DestroyThread();
+        destroyThread();
 
         pMutex.lock();
         idx_list.clear();
@@ -59,7 +59,6 @@ namespace TA3D
 
     INGAME_WEAPONS::INGAME_WEAPONS()
     {
-        InitThread();
         init(false);
     }
 
@@ -138,7 +137,7 @@ namespace TA3D
 
 
 
-    void INGAME_WEAPONS::draw(Camera* cam, MAP* map, bool underwater)
+    void INGAME_WEAPONS::draw(MAP* map, bool underwater)
     {
         pMutex.lock();
         if(nb_weapon<=0 || weapon.size()<=0)
@@ -148,14 +147,12 @@ namespace TA3D
         }
 
         gfx->lock();
-        if (cam)
-            cam->setView();
 
         for(std::vector<uint32>::iterator e = idx_list.begin() ; e != idx_list.end() ; ++e)
         {
             uint32 i = *e;
-            if((weapon[i].Pos.y<map->sealvl && underwater) || (weapon[i].Pos.y>=map->sealvl && !underwater))
-                weapon[i].draw(cam,map);
+            if((weapon[i].Pos.y < map->sealvl && underwater) || (weapon[i].Pos.y >= map->sealvl && !underwater))
+                weapon[i].draw(map);
         }
 
         gfx->unlock();
@@ -217,7 +214,7 @@ namespace TA3D
     }
 
 
-    int INGAME_WEAPONS::Run()
+    void INGAME_WEAPONS::proc(void*)
     {
         thread_running = true;
         float dt = 1.0f / TICKS_PER_SEC;
@@ -243,11 +240,10 @@ namespace TA3D
         thread_running = false;
         thread_ask_to_stop = false;
         LOG_INFO("Weapon engine: " << (float)(counter * 1000) / (msec_timer - weapon_timer) << " ticks/sec");
-        return 0;
     }
 
 
-    void INGAME_WEAPONS::SignalExitThread()
+    void INGAME_WEAPONS::signalExitThread()
     {
         if (thread_running)
             thread_ask_to_stop = true;

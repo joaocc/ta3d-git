@@ -10,7 +10,7 @@
 
 
 /*!
-** \brief Force the Use of the Boost functions 
+** \brief Force the Use of the Boost functions
 */
 # define TA3D_USE_BOOST  0
 
@@ -27,7 +27,7 @@
 
 //! Macro to convert the string into a given type
 # define TA3D_WSTR_CAST_OP(X)  X v; \
-                                fromString<X>(v, *this, std::dec); \
+                                fromString<X>(v, *this); \
                                 return v;
 
 //! Macro to append the value of a boolean (true -> "true", false -> "false")
@@ -158,7 +158,7 @@ namespace TA3D
         ** \brief Convert all slashes into antislashes
         ** \param s The string to convert
         ** \return A new string
-        */ 
+        */
         static String ConvertSlashesIntoAntiSlashes(const String& s) {return String(s).convertSlashesIntoAntiSlashes();}
 
         /*!
@@ -208,7 +208,7 @@ namespace TA3D
         /*!
         ** \brief Convert a string from ASCII to UTF8
         ** \param s The string to convert
-        ** \return A new Null-terminated String (must be deleted with the keyword `delete[]`), even if s is NULL 
+        ** \return A new Null-terminated String (must be deleted with the keyword `delete[]`), even if s is NULL
         */
         static char* ConvertToUTF8(const char* s);
         /*!
@@ -216,7 +216,7 @@ namespace TA3D
         ** \param s The string to convert
         ** \param len The length of the string
         ** \param[out] The new size
-        ** \return A new Null-terminated String (must be deleted with the keyword `delete[]`), even if s is NULL 
+        ** \return A new Null-terminated String (must be deleted with the keyword `delete[]`), even if s is NULL
         */
         static char* ConvertToUTF8(const char* s, const uint32 len);
         static char* ConvertToUTF8(const char* s, const uint32 len, uint32& newSize);
@@ -229,10 +229,10 @@ namespace TA3D
         static String ConvertToUTF8(const String& s);
 
         /*!
-        ** \brief Formatted string 
+        ** \brief Formatted string
         ** \param format The format of the new string
         ** \return A new string
-        */ 
+        */
         static String Format(const String& f, ...);
         static String Format(const char* f, ...);
 
@@ -280,7 +280,7 @@ namespace TA3D
 
         //! \name The operator `<<`
         //@{
-        //! Append a string (char*) 
+        //! Append a string (char*)
         String& operator << (const char* v) {append(v);return *this;}
         //! Append a string (stl)
         String& operator << (const std::string& v) {append(v);return *this;}
@@ -308,7 +308,7 @@ namespace TA3D
         String& operator << (const uint64_t v) {TA3D_WSTR_APPEND;}
         //! Convert then Append a float
         String& operator << (const float v) {TA3D_WSTR_APPEND;}
-        //! Convert then Append a double 
+        //! Convert then Append a double
         String& operator << (const double v) {TA3D_WSTR_APPEND;}
         //! Convert then Append a boolean (will be converted into "true" or "false")
         String& operator << (const bool v) {TA3D_WSTR_APPEND_BOOL(v);return *this;}
@@ -318,33 +318,33 @@ namespace TA3D
         //! \name Convertions
         //@{
         //! Convert this string into an int (8 bits)
-        int8_t toInt8() const {TA3D_WSTR_CAST_OP(int8_t);} 
+        int8_t toInt8() const {TA3D_WSTR_CAST_OP(int8_t);}
         //! Convert this string into an int (16 bits)
-        int16_t toInt16() const {TA3D_WSTR_CAST_OP(int16_t);} 
+        int16_t toInt16() const {TA3D_WSTR_CAST_OP(int16_t);}
         //! Convert this string into an int (32 bits)
-        int32_t toInt32() const {TA3D_WSTR_CAST_OP(int32_t);} 
+        int32_t toInt32() const {TA3D_WSTR_CAST_OP(int32_t);}
         //! Convert this string into an int (64 bits)
-        int64_t toInt64() const {TA3D_WSTR_CAST_OP(int64_t);} 
+        int64_t toInt64() const {TA3D_WSTR_CAST_OP(int64_t);}
         //! Convert this string into an unsigned int (8 bits)
-        uint8_t toUInt8() const {TA3D_WSTR_CAST_OP(uint8_t);} 
+        uint8_t toUInt8() const {TA3D_WSTR_CAST_OP(uint8_t);}
         //! Convert this string into an unsigned int (16 bits)
-        uint16_t toUInt16() const {TA3D_WSTR_CAST_OP(uint16_t);} 
+        uint16_t toUInt16() const {TA3D_WSTR_CAST_OP(uint16_t);}
         //! Convert this string into an unsigned int (32 bits)
-        uint32_t toUInt32() const {TA3D_WSTR_CAST_OP(uint32_t);} 
+        uint32_t toUInt32() const {TA3D_WSTR_CAST_OP(uint32_t);}
         //! Convert this string into an unsigned int (64 bits)
-        uint64_t toUInt64() const {TA3D_WSTR_CAST_OP(uint64_t);} 
+        uint64_t toUInt64() const {TA3D_WSTR_CAST_OP(uint64_t);}
         //! Convert this string into a float
-        float toFloat() const {TA3D_WSTR_CAST_OP(float);} 
+        float toFloat() const {TA3D_WSTR_CAST_OP(float);}
         //! Convert this string into a float with a default value if empty
-        float toFloat(const float def) const {if (empty()) return def;TA3D_WSTR_CAST_OP(float);} 
+        float toFloat(const float def) const {if (empty()) return def;TA3D_WSTR_CAST_OP(float);}
         //! Convert this string into a double
-        double toDouble() const {TA3D_WSTR_CAST_OP(double);} 
+        double toDouble() const {TA3D_WSTR_CAST_OP(double);}
         //! Convert this string into a bool (true if the lower case value is equals to "true", "1" or "on")
-        bool toBool() const; 
+        bool toBool() const;
 
         //! \name The operator `+=` (with the same abilities than the operator `<<`)
         //@{
-        //! Append a string (char*) 
+        //! Append a string (char*)
         String& operator += (const char* v) {append(v); return *this;}
         //! Append a string (stl)
         String& operator += (const std::string& v) {append(v); return *this;}
@@ -372,7 +372,7 @@ namespace TA3D
         String& operator += (const uint64_t v) {*this << v; return *this; }
         //! Convert then Append a float
         String& operator += (const float v) {*this << v; return *this; }
-        //! Convert then Append a double 
+        //! Convert then Append a double
         String& operator += (const double v) {*this << v; return *this; }
         //! Convert then Append a boolean (will be converted into "true" or "false")
         String& operator += (const bool v) {TA3D_WSTR_APPEND_BOOL(v); return *this; }
@@ -505,7 +505,7 @@ namespace TA3D
         String& findAndReplace(char toSearch, const char replaceWith, const enum String::CharCase option = soCaseSensitive);
 
         /*!
-        ** \brief Reset the current value with a formatted string 
+        ** \brief Reset the current value with a formatted string
         ** \param f The format of the new string
         ** \return Always *this
         */
@@ -513,7 +513,7 @@ namespace TA3D
         String& format(const char* f, ...);
 
         /*!
-        ** \brief Append a formatted string 
+        ** \brief Append a formatted string
         ** \param f The format of the new string
         ** \return Always *this
         */
@@ -521,6 +521,27 @@ namespace TA3D
         String& appendFormat(const char* f, ...);
         String& vappendFormat(const char* f, va_list parg);
 
+
+        /*!
+        ** \brief Detect if the string matches the given pattern
+        ** \param pattern
+        ** \return true if match
+        */
+        bool match(const String &pattern);
+
+        /*!
+        ** \brief returns a substring assuming current string is an UTF8 String
+        ** \param pos
+        ** \param len
+        ** \return the substring
+        */
+        String substrUTF8(int pos, int len) const;
+
+        /*!
+        ** \brief returns the String size assuming it's in UTF8
+        ** \return the number of UTF8 symbols
+        */
+        int sizeUTF8() const;
 
     private:
         /*!
@@ -531,10 +552,21 @@ namespace TA3D
         ** \return True if the operation succeeded, False otherwise
         */
         template <class T>
-        bool fromString(T& t, const String& s, std::ios_base& (*f)(std::ios_base&)) const
+        bool fromString(T& t, const String& s) const
         {
             std::istringstream iss(s);
-            return !(iss >> f >> t).fail();
+            if (s.size() > 2)
+            {
+                if(s[0] == '0' && (s[1] == 'x' || s[1] == 'X'))
+                    iss >> std::hex;
+                else if (s[0] == '0' && s[1] != 'x' && s[1] != 'X')
+                    iss >> std::oct;
+                else
+                    iss >> std::dec;
+            }
+            else
+                iss >> std::dec;
+            return !(iss >> t).fail();
         }
 
     }; // class String

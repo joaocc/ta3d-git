@@ -44,7 +44,7 @@
 # ifndef MAX_PATH
 #   define MAX_PATH 260
 # endif
- 
+
 
 
 namespace TA3D
@@ -79,7 +79,7 @@ namespace HPI
         cHPIHandler();
         cHPIHandler(const String &path);
 
-        //! Destructor 
+        //! Destructor
         ~cHPIHandler();
         //@}
 
@@ -117,7 +117,7 @@ namespace HPI
         */
         uint32 getFilelist(const String& s, String::List& li);
         uint32 getFilelist(const String& s, String::Vector& li);
-        
+
         /*!
         ** \brief
         */
@@ -138,7 +138,7 @@ namespace HPI
         ** \return
         */
         bool Exists(const String& filename);
- 
+
         # if defined(DEBUG)
         /*!
         ** \brief
@@ -221,7 +221,7 @@ namespace HPI
         }; // class HPICHUNK
 
 
-        /*! 
+        /*!
         ** \brief Used for strict-aliasing safety
         */
         union HPICHUNK_U
@@ -279,7 +279,7 @@ namespace HPI
 
     private:
         /*!
-        ** \brief 
+        ** \brief
         **
         ** \param filename
         ** \param priority
@@ -358,7 +358,7 @@ namespace HPI
         void CloseHPIFile(HPIFILEDATA* hfd);
 
         /*!
-        ** \brief 
+        ** \brief
         **
         ** \param hi
         ** \param fileLength
@@ -424,7 +424,7 @@ namespace HPI
         void destroy();
 
         /*!
-        ** \brief 
+        ** \brief
         **
         ** \param filename
         */
@@ -478,7 +478,7 @@ namespace HPI
         uint32 length;
 
     }; // class TA3D_FILE
-    
+
 
     TA3D_FILE	*ta3d_fopen(const String& filename );
     void		ta3d_fclose( TA3D_FILE *file );
@@ -490,7 +490,7 @@ namespace HPI
     bool		ta3d_feof( TA3D_FILE *file );
     int			ta3d_fsize( TA3D_FILE *file );
 
-    bool        load_palette(RGB *pal, const String& filename = "palettes\\palette.pal");
+    bool        load_palette(SDL_Color *pal, const String& filename = "palettes\\palette.pal");
 
 } // namespace HPI
 

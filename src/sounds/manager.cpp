@@ -118,47 +118,46 @@ namespace Audio
     {
         MutexLocker locker(pMutex);
 
-        struct al_ffblk info;
         String search;
-        search << TA3D::Paths::Resources << "music/";
+        search << TA3D::Paths::Resources << "music/*";
+
+        String::List file_list;
+        Paths::GlobFiles( file_list, search, false, true);
+
+        file_list.sort();
 
         for (Playlist::iterator i = pPlaylist.begin(); i != pPlaylist.end(); ++i)
             (*i)->checked = false;
         bool default_deactivation = !pPlaylist.empty();
 
-        if (al_findfirst((search + "*").c_str(), &info, FA_ALL) == 0) // Add missing files
+        for(String::List::iterator i = file_list.begin() ; i != file_list.end() ; ++i) // Add missing files
         {
-            do
+            if (String::ToLower(*i) == "playlist.txt" || (*i)[0] == '.')
+                continue;
+
+            String filename;
+            filename << *i;
+
+            Playlist::const_iterator i;
+            for (i = pPlaylist.begin(); i != pPlaylist.end(); ++i)
             {
-                if (String::ToLower(info.name) == "playlist.txt" || info.name[0] == '.')
-                    continue;
-
-                String filename;
-                filename << info.name;
-
-                Playlist::const_iterator i;
-                for (i = pPlaylist.begin(); i != pPlaylist.end(); ++i)
+                if ((*i)->filename == filename)
                 {
-                    if ((*i)->filename == filename)
-                    {
-                        (*i)->checked = true;
-                        break;
-                    }
+                    (*i)->checked = true;
+                    break;
                 }
+            }
 
-                if (i == pPlaylist.end()) // It's missing, add it
-                {
-                    PlaylistItem *m_Tune = new PlaylistItem();
-                    m_Tune->battleTune = false;
-                    m_Tune->disabled = default_deactivation;
-                    m_Tune->checked = true;
-                    m_Tune->filename = filename;
-                    LOG_DEBUG(LOG_PREFIX_SOUND << "Added to the playlist: `" << filename << "`");
-                    pPlaylist.push_back(m_Tune);
-                }
-
-            } while (!al_findnext(&info));
-            al_findclose(&info);
+            if (i == pPlaylist.end()) // It's missing, add it
+            {
+                PlaylistItem *m_Tune = new PlaylistItem();
+                m_Tune->battleTune = false;
+                m_Tune->disabled = default_deactivation;
+                m_Tune->checked = true;
+                m_Tune->filename = filename;
+                LOG_DEBUG(LOG_PREFIX_SOUND << "Added to the playlist: `" << filename << "`");
+                pPlaylist.push_back(m_Tune);
+            }
         }
 
         int e = 0;
@@ -201,7 +200,7 @@ namespace Audio
         {
             if ((*i)->battleTune)
                 play_list_file << "*" << (*i)->filename << "\n";
-            else 
+            else
             {
                 if ((*i)->disabled)
                     play_list_file << "!" << (*i)->filename << "\n";
@@ -467,9 +466,9 @@ namespace Audio
         pMutex.unlock();
     }
 
-    
-    
-    
+
+
+
     void Manager::togglePauseMusic()
     {
         pMutex.lock();
@@ -594,7 +593,7 @@ namespace Audio
         if (!m_FMODRunning)
             return;
 
-        if (!file_exists( filename.c_str() ,FA_RDONLY | FA_ARCH, NULL))
+        if (!exists(filename))
         {
             if (!filename.empty())
                 LOG_ERROR(LOG_PREFIX_SOUND << "Failed to find file: `" << filename << "`");
@@ -700,7 +699,7 @@ namespace Audio
         }
         pMutex.unlock();
     }
-    
+
     void Manager::update3DSound()
     {
         pMutex.lock();
@@ -783,14 +782,14 @@ namespace Audio
 
 
 
-    
+
     uint32 Manager::InterfaceMsg(const lpcImsg msg)
     {
         if (msg->MsgID == TA3D_IM_GUI_MSG)	// for GUI messages, test if it's a message for us
         {
             if (msg->lpParm1 == NULL)
                 return INTERFACE_RESULT_HANDLED; // Oups badly written things
-            
+
             // Get the string associated with the signal
             String message((char*)msg->lpParm1);
             message.toLower();
@@ -827,7 +826,7 @@ namespace Audio
             pBasicSound->release();
             # endif // TA3D_PLATFORM_MINGW
         }
-        
+
         pBasicSound = NULL;
         pBasicChannel = NULL;
         uint32 sound_file_size = 0;
@@ -880,10 +879,10 @@ namespace Audio
     {
         filename.toLower();
 
-        I_Msg( TA3D::TA3D_IM_DEBUG_MSG, (char*)format("loading sound file %s\n",(char *)filename.c_str()).c_str(), NULL, NULL );
+        LOG_DEBUG(LOG_PREFIX_SOUND << "loading sound file " << filename);
 
         // if it has a .wav extension then remove it.
-        String::size_type i = filename.find("wav");   
+        String::size_type i = filename.find("wav");
         if (i != String::npos)
             filename.resize(filename.length() - 4);
 
@@ -901,8 +900,7 @@ namespace Audio
         byte* data = HPIManager->PullFromHPI(theSound, &Length);
         if (!data) // if no data, log a message and return false.
         {
-            filename = format("FMOD: LoadSound(%s), no such sound found in HPI.\n", filename.c_str());
-            I_Msg( TA3D::TA3D_IM_DEBUG_MSG, (void *)filename.c_str(), NULL, NULL);
+            LOG_DEBUG( LOG_PREFIX_SOUND << "FMOD: LoadSound(" << filename << "), no such sound found in HPI.");
             return false;
         }
 
@@ -929,10 +927,7 @@ namespace Audio
 
             // log a message and return false;
             if (m_FMODRunning)
-            {
-                filename = format("FMOD: LoadSound(%s), Failed to construct sample.\n", filename.c_str());
-                I_Msg( TA3D::TA3D_IM_DEBUG_MSG, (void *)filename.c_str(), NULL, NULL);
-            }
+                LOG_DEBUG(LOG_PREFIX_SOUND << "FMOD: LoadSound(" << filename << "), Failed to construct sample.");
             return false;
         }
 
@@ -973,7 +968,7 @@ namespace Audio
         return true;
     }
 
-   
+
     void Manager::loadTDFSounds(const bool allSounds)
     {
         pMutex.lock();

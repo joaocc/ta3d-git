@@ -46,7 +46,6 @@ void loading(const float percent, const String& msg)
         network_manager.sendAll(format("LOADING %d", last_percent));
     }
 
-    set_uformat(U_UTF8);
     bool init=(Glfond==0);
 
     if(init)
@@ -70,19 +69,16 @@ void loading(const float percent, const String& msg)
 
     gfx->set_2D_mode();
     glPushMatrix();
-    glScalef(SCREEN_W/1280.0f,SCREEN_H/1024.0f,1.0f);
 
-    const float TA_font_size = gfx->TA_font.get_size();
-    gfx->TA_font.change_size( 1.75f );
-    float h = gfx->TA_font.height();
+    float h = gui_font->height();
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);		// Efface l'écran
 
-    gfx->drawtexture(Glfond,0.0f,0.0f,1280.0f,1024.0f);
+    gfx->drawtexture(Glfond,0.0f,0.0f,SCREEN_W,SCREEN_H);
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-    glColor4f(1.0f,1.0f,1.0f,1.0f);
+    glColor4ub(0xFF,0xFF,0xFF,0xFF);
 
     if (messages.empty() || String::ToLower(messages.front()) != String::ToLower(msg))
     {
@@ -91,43 +87,42 @@ void loading(const float percent, const String& msg)
         messages.push_front( msg );
     }
 
+    float fw = SCREEN_W / 1280.0f;
+    float fh = SCREEN_H / 1024.0f;
+
     int e = 0;
     for (String::List::const_iterator i = messages.begin(); i != messages.end(); ++i, ++e)
-        gfx->print(gfx->TA_font, 105.0f, 175.0f + h * e, 0.0f, 0xFFFFFFFF, *i);
+        gfx->print(gui_font, 105.0f * fw, 175.0f * fh + h * e, 0.0f, 0xFFFFFFFF, *i);
 
     glDisable(GL_BLEND);
 
     glDisable(GL_TEXTURE_2D);
     glColor3f(0.5f,0.8f,0.3f);
     glBegin(GL_QUADS);
-    glVertex2f(100.0f,858.0f);
-    glVertex2f(100.0f+10.72f*percent,858.0f);
-    glVertex2f(100.0f+10.72f*percent,917.0f);
-    glVertex2f(100.0f,917.0f);
+    glVertex2f(100.0f * fw,858.0f * fh);
+    glVertex2f((100.0f+10.72f*percent) * fw,858.0f * fh);
+    glVertex2f((100.0f+10.72f*percent) * fw,917.0f * fh);
+    glVertex2f(100.0f * fw,917.0f * fh);
     glEnd();
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-    glColor4f(1.0f,1.0f,1.0f,1.0f);
+    glColor4ub(0xFF,0xFF,0xFF,0xFF);
 
-    gfx->drawtexture(Glfond,100.0f,856.0f,1172.0f,917.0f,100.0f / 1280.0f,862.0f/1024.0f,1172.0f/1280.0f,917.0f/1024.0f);
+    gfx->drawtexture(Glfond,100.0f * fw,856.0f * fh,1172.0f * fw,917.0f * fh,100.0f / 1280.0f,862.0f/1024.0f,1172.0f/1280.0f,917.0f/1024.0f);
 
     glDisable(GL_BLEND);
 
     glEnable(GL_TEXTURE_2D);
 
     glEnable(GL_BLEND);
-    gfx->print(gfx->TA_font,640.0f-0.5f*gfx->TA_font.length(msg),830-h*0.5f,0.0f,0xFFFFFFFF,msg);
+    gfx->print(gui_font,640.0f * fw - 0.5f * gui_font->length(msg),830 * fh - h * 0.5f,0.0f,0xFFFFFFFF,msg);
     glDisable(GL_BLEND);
-
-    gfx->TA_font.change_size( TA_font_size );
 
     glPopMatrix();
 
     if( lp_CONFIG->draw_console_loading ) // If set in config
-    {
-        String cmd = console.draw(gfx->TA_font, 0.0f, gfx->TA_font.height(), true);			// Display something to show what's happening
-    }
+        String cmd = console.draw(gui_font, 0.0f, true);			// Display something to show what's happening
 
     gfx->flip();
 
@@ -139,7 +134,7 @@ void loading(const float percent, const String& msg)
         gfx->destroy_texture( Glfond );
     }
 
-    set_uformat(U_ASCII);
+//    set_uformat(U_ASCII);
 }
 
 

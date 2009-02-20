@@ -105,47 +105,53 @@ void config_menu(void)
     int res_height[100];
     int res_bpp[100];
 
-    GFX_MODE_LIST *mode_list = get_gfx_mode_list( GFX_OPENGL_FULLSCREEN);
-    if (mode_list)
+    SDL_Rect **mode_list = SDL_ListModes(NULL, SDL_FULLSCREEN | SDL_OPENGL);
+
+    if (mode_list == (SDL_Rect**)0)         // No resolution available (normally this shouldn't be possible if we get here)
+        nb_res = 0;
+    else if (mode_list == (SDL_Rect**)-1)   // Ok, everything is possible so let's use standard sizes
     {
-        for (int i = 0 ; i < mode_list->num_modes ; ++i)
+#define ADD_RES(w,h)  \
+        res_bpp[nb_res++] = 16;\
+        res_width[nb_res++] = w;\
+        res_height[nb_res++] = h;\
+        res_bpp[nb_res++] = 32;\
+        res_width[nb_res++] = w;\
+        res_height[nb_res++] = h;
+
+        ADD_RES(640,480)
+        ADD_RES(800,480)
+        ADD_RES(800,600)
+        ADD_RES(1024,768)
+        ADD_RES(1024,600)
+        ADD_RES(1280,960)
+        ADD_RES(1280,1024)
+        ADD_RES(1440,900)
+        ADD_RES(1680,1050)
+        ADD_RES(1600,1200)
+        ADD_RES(1920,1200)
+        ADD_RES(2560,1600)
+    }
+    else
+    {
+        for (int i = 0 ; mode_list[i] ; ++i)
         {
-            if (mode_list->mode[i].bpp == 32)
+            if (mode_list[i]->w >= 640 && mode_list[i]->h >= 480)
             {
-                bool found = mode_list->mode[i].width < 640 || mode_list->mode[i].height < 480;
-                if (!found)
-                {
-                    for (int e = 0; e < nb_res; ++e)
-                    {
-                        if (res_width[e] == mode_list->mode[ i ].width && res_height[e] == mode_list->mode[ i ].height )
-                        {
-                            found = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (mode_list->mode[ i ].height == 0 ||
-                    ( mode_list->mode[ i ].width * 3 != 4 * mode_list->mode[ i ].height &&
-                      mode_list->mode[ i ].width * 9 != 16 * mode_list->mode[ i ].height &&
-                      mode_list->mode[ i ].width * 10 != 16 * mode_list->mode[ i ].height &&
-                      mode_list->mode[ i ].width * 4 != 5 * mode_list->mode[ i ].height ) )
-                {
-                    found = true;
-                }
-
-                if (!found)
+                if(SDL_VideoModeOK(mode_list[i]->w, mode_list[i]->h, 16, SDL_FULLSCREEN | SDL_OPENGL) == 16)
                 {
                     res_bpp[ nb_res ] = 16;
-                    res_width[ nb_res ] = mode_list->mode[ i ].width;
-                    res_height[ nb_res++ ] = mode_list->mode[ i ].height;
+                    res_width[ nb_res ] = mode_list[i]->w;
+                    res_height[ nb_res++ ] = mode_list[i]->h;
+                }
+                if(SDL_VideoModeOK(mode_list[i]->w, mode_list[i]->h, 32, SDL_FULLSCREEN | SDL_OPENGL) == 32)
+                {
                     res_bpp[ nb_res ] = 32;
-                    res_width[ nb_res ] = mode_list->mode[ i ].width;
-                    res_height[ nb_res++ ] = mode_list->mode[ i ].height;
+                    res_width[ nb_res ] = mode_list[i]->w;
+                    res_height[ nb_res++ ] = mode_list[i]->h;
                 }
             }
         }
-        destroy_gfx_mode_list( mode_list);
     }
 
     config_area.set_state("*.showfps", lp_CONFIG->showfps);
@@ -166,7 +172,6 @@ void config_menu(void)
     config_area.set_state("*.particle", lp_CONFIG->particle);
     config_area.set_state("*.explosion_particles", lp_CONFIG->explosion_particles);
     config_area.set_state("*.waves", lp_CONFIG->waves);
-    config_area.set_state("*.shadow", lp_CONFIG->shadow);
     config_area.set_state("*.height_line", lp_CONFIG->height_line);
     config_area.set_state("*.detail_tex", lp_CONFIG->detail_tex);
     config_area.set_state("*.use_texture_cache", lp_CONFIG->use_texture_cache);
@@ -195,7 +200,7 @@ void config_menu(void)
             obj->Text.push_back( format( "%dx%dx%d", res_width[ i ], res_height[ i ], res_bpp[ i ] ));
     }
     if (config_area.get_object("*.shadow_quality"))
-        config_area.set_caption( "*.shadow_quality", config_area.get_object("*.shadow_quality")->Text[1+Math::Min((lp_CONFIG->shadow_quality-1) / 3, 2)]);
+        config_area.set_caption( "*.shadow_quality", config_area.get_object("*.shadow_quality")->Text[1 + Math::Max( 0, Math::Min((int)lp_CONFIG->shadow_quality, 2) )]);
     config_area.set_caption("*.timefactor", format( "%d", (int)lp_CONFIG->timefactor ));
     switch( lp_CONFIG->fsaa )
     {
@@ -280,8 +285,10 @@ void config_menu(void)
         bool key_is_pressed = false;
         do
         {
-            key_is_pressed = keypressed();
-            if (lp_CONFIG->quickstart )
+            config_area.check();
+            key_is_pressed = config_area.key_pressed;
+            rest(1);
+            if (lp_CONFIG->quickstart)
             {
                 GUIOBJ *pbar = config_area.get_object( "config_confirm.p_wait");
                 if (pbar)
@@ -296,9 +303,9 @@ void config_menu(void)
                     }
                 }
             }
-            config_area.check();
-            rest(1);
-        } while( amx == mouse_x && amy == mouse_y && amz == mouse_z && amb == mouse_b && !key[ KEY_ENTER ] && !key[ KEY_ESC ] && !done && !key_is_pressed && !config_area.scrolling);
+        } while( amx == mouse_x && amy == mouse_y && amz == mouse_z && amb == mouse_b
+                && !key[ KEY_ENTER ] && !key[ KEY_ESC ] && !done && !key_is_pressed
+                && !config_area.scrolling);
 
         amx = mouse_x;
         amy = mouse_y;
@@ -396,7 +403,6 @@ void config_menu(void)
         lp_CONFIG->particle = config_area.get_state( "*.particle");
         lp_CONFIG->explosion_particles = config_area.get_state( "*.explosion_particles");
         lp_CONFIG->waves = config_area.get_state( "*.waves");
-        lp_CONFIG->shadow = config_area.get_state( "*.shadow");
         lp_CONFIG->height_line = config_area.get_state( "*.height_line");
         lp_CONFIG->detail_tex = config_area.get_state( "*.detail_tex");
         lp_CONFIG->draw_console_loading = config_area.get_state( "*.draw_console_loading");
@@ -464,7 +470,7 @@ void config_menu(void)
             if (obj && obj->Value != -1)
             {
                 obj->Text[0] = obj->Text[1 + obj->Value];
-                lp_CONFIG->shadow_quality = obj->Value * 3 + 1;
+                lp_CONFIG->shadow_quality = obj->Value;
             }
         }
         if (config_area.get_value("*.timefactor") >= 0)
@@ -913,8 +919,8 @@ void setup_game(bool client, const char *host, const char *saved_game)
                 done = true;
                 break;
             }
-            key_is_pressed = keypressed();
             setupgame_area.check();
+            key_is_pressed = setupgame_area.key_pressed;
             rest(1);
             if (msec_timer - progress_timer >= 500 && network_manager.getFileTransferProgress() != 100.0f)
                 break;
@@ -1872,7 +1878,7 @@ void setup_game(bool client, const char *host, const char *saved_game)
 
 void network_room(void)             // Let players create/join a game
 {
-    set_uformat(U_UTF8);
+//    set_uformat(U_UTF8);
 
     network_manager.InitBroadcast("1234");      // broadcast mode
 
@@ -1903,8 +1909,9 @@ void network_room(void)             // Let players create/join a game
         bool key_is_pressed = false;
         do
         {
-            key_is_pressed = keypressed() || msec_timer - server_list_timer >= SERVER_LIST_REFRESH_DELAY || msec_timer - internet_server_list_timer >= INTERNET_AD_COUNTDOWN;
+            key_is_pressed = msec_timer - server_list_timer >= SERVER_LIST_REFRESH_DELAY || msec_timer - internet_server_list_timer >= INTERNET_AD_COUNTDOWN;
             networkgame_area.check();
+            key_is_pressed |= networkgame_area.key_pressed;
             rest(1);
         } while( amx == mouse_x && amy == mouse_y && amz == mouse_z && amb == mouse_b && mouse_b == 0 && !key[ KEY_ENTER ]
                  && !key[ KEY_ESC ] && !done && !key_is_pressed && !networkgame_area.scrolling && !network_manager.BroadcastedMessages());
@@ -2233,7 +2240,7 @@ void campaign_main_menu(void)
     if (data)
         delete[] data;
 
-    cTAFileParser* campaign_parser = NULL;
+    TDFParser* campaign_parser = NULL;
 
     bool start_game = false;
 
@@ -2252,8 +2259,8 @@ void campaign_main_menu(void)
         bool key_is_pressed = false;
         do
         {
-            key_is_pressed = keypressed();
             campaign_area.check();
+            key_is_pressed = campaign_area.key_pressed;
             rest(1);
         } while( amx == mouse_x && amy == mouse_y && amz == mouse_z && amb == mouse_b
                  && mouse_b == 0 && !key[ KEY_ENTER ] && !key[ KEY_ESC ]
@@ -2274,7 +2281,7 @@ void campaign_main_menu(void)
                 last_campaign_id = guiobj->Pos;
                 mission_id = -1;
                 campaign_name = "camps\\" + guiobj->Text[ guiobj->Pos ] + ".tdf";
-                campaign_parser = new cTAFileParser( campaign_name);
+                campaign_parser = new TDFParser( campaign_name);
 
                 guiobj = campaign_area.get_object("campaign.mission_list");
                 nb_mission = 0;
@@ -2498,8 +2505,8 @@ Battle::Result brief_screen(String campaign_name, int mission_id)
         bool key_is_pressed = false;
         do
         {
-            key_is_pressed = keypressed();
             brief_area.check();
+            key_is_pressed = brief_area.key_pressed;
             rest( 1);
         } while( amx == mouse_x && amy == mouse_y && amz == mouse_z && amb == mouse_b && mouse_b == 0 && !key[ KEY_ENTER ]
                  && !key[ KEY_ESC ] && !done && !key_is_pressed && !brief_area.scrolling && (int)planet_frame == (int)((msec_timer - time_ref) * 0.01f));
@@ -2747,8 +2754,8 @@ void wait_room(void *p_game_data)
                 done = true;
                 break;
             }
-            key_is_pressed = keypressed();
             wait_area.check();
+            key_is_pressed = wait_area.key_pressed;
             rest(1);
         } while( amx == mouse_x && amy == mouse_y && amz == mouse_z && amb == mouse_b && mouse_b == 0 && !key[ KEY_ENTER ] && !key[ KEY_ESC ] && !done
                  && !key_is_pressed && !wait_area.scrolling && special_msg.empty() && !playerDropped

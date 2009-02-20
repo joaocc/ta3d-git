@@ -1,8 +1,6 @@
 #ifndef __TA3D_GFX_PARTICLES_ENGINE_H__
 # define __TA3D_GFX_PARTICLES_ENGINE_H__
 
-# include "../../stdafx.h"
-# include "../../threads/cThread.h"
 # include "../../threads/thread.h"
 # include "../../misc/vector.h"
 # include "../../ta3dbase.h"
@@ -22,7 +20,7 @@ namespace TA3D
     **
     ** \brief Engine for particles
     */
-    class PARTICLE_ENGINE : public ObjectSync, public cThread
+    class PARTICLE_ENGINE : public ObjectSync, public Thread
     {
     public:
         //! \name Constructor & Destructor
@@ -131,7 +129,7 @@ namespace TA3D
         uint32		size;			// Quantité maximale de particules stockables dans le tableau
         std::vector<PARTICLE>	part;	// Liste des particules / Particle list
         GLuint		parttex;		// Textures des particules
-        BITMAP		*partbmp;		// Textures des particules
+        SDL_Surface	*partbmp;		// Textures des particules
         bool		dsmoke;
         uint32		ntex;
         std::vector< GLuint >	gltex;
@@ -146,8 +144,9 @@ namespace TA3D
         Vector3D* p_wind_dir;
         float* p_g;
         std::vector<ParticlesSystem*> particle_systems;
-        int  Run();
-        void  SignalExitThread();
+    private:
+        void  proc(void*);
+        void  signalExitThread();
 
     }; // class PARTICLE_ENGINE
 

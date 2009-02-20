@@ -154,10 +154,6 @@ namespace TA3D
         int	    waterdamage;
         bool    network;
 
-    private:
-        //! \todo Must be removed
-        char *get_line(char *data);
-
     };
 
 
@@ -212,10 +208,10 @@ namespace TA3D
         byte		**view;			// Indique quels sont les parcelles de terrain visibles à l'écran
         byte		**path;			// Tableau pour le pathfinding
 
-        BITMAP		*view_map;		// Map of what has been discovered
-        BITMAP		*sight_map;		// Map of who is viewing
-        BITMAP		*radar_map;		// Radar map
-        BITMAP		*sonar_map;		// Sonar map
+        SDL_Surface *view_map;		// Map of what has been discovered
+        SDL_Surface *sight_map;		// Map of who is viewing
+        SDL_Surface *radar_map;		// Radar map
+        SDL_Surface *sonar_map;		// Sonar map
 
         int			map_w;			// Largeur de la carte en 16ème de bloc
         int			map_h;			// Hauteur de la carte en 16ème de bloc
@@ -227,7 +223,7 @@ namespace TA3D
         int			bloc_h_db;
         float		map2blocdb_w;
         float		map2blocdb_h;
-        BITMAP		*mini;			// Minimap
+        SDL_Surface *mini;			// Minimap
         GLuint		glmini;			// Texture OpenGl pour la minimap
         int			mini_w;
         int			mini_h;
@@ -243,6 +239,7 @@ namespace TA3D
         GLuint		details_tex;	// details texture to show more details when zooming on the map
         float		color_factor;	// color factor used when details_tex is set with a texture that darken the map
         Shader		detail_shader;	// pixel shader to add the detail texture correctly
+        Shader		shadow2_shader;	// pixel shader to use the shadow map in light equation(also add the detail texture correctly)
 
         MAP_OTA		ota_data;		// Data read from the ota file
 
@@ -284,6 +281,8 @@ namespace TA3D
         ~MAP() {destroy();}
 
         void check_unit_visibility(int x, int y);
+
+        std::vector<Vector3D> get_visible_volume();
 
         void update_player_visibility( int player_id, int px, int py, int r, int rd, int sn, int rd_j, int sn_j, bool jamming=false, bool black=false );	// r -> sight, rd -> radar range, sn -> sonar range, j for jamming ray
 
@@ -377,7 +376,7 @@ namespace TA3D
     public:
         uint16		nb_vtx;
         uint16		nb_idx;
-        Vector3D		*point;
+        Vector3D    *point;
         float		*texcoord;
         GLushort	*index;
         int			s;

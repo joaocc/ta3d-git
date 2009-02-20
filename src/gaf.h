@@ -183,9 +183,9 @@ namespace TA3D
                                    int* w = NULL, int* h = NULL, const bool truecolor = true, const int filter = FILTER_TRILINEAR);
 
         /*!
-        ** \brief Load a GAF image into a Bitmap
+        ** \brief Load a GAF image into a SDL_Surface
         */
-        static BITMAP* RawDataToBitmap(const byte* buf, const sint32 entry_idx, const sint32 img_idx, short* ofs_x = NULL, short* ofs_y = NULL, const bool truecolor = true);			// Lit une image d'un fichier gaf en mémoire
+        static SDL_Surface* RawDataToBitmap(const byte* buf, const sint32 entry_idx, const sint32 img_idx, short* ofs_x = NULL, short* ofs_y = NULL, const bool truecolor = true);			// Lit une image d'un fichier gaf en mémoire
 
         /*!
         ** \brief Get the number of entries from raw data
@@ -229,7 +229,7 @@ namespace TA3D
             //!
             sint32 nb_bmp;
             //!
-            BITMAP** bmp;
+            SDL_Surface** bmp;
             //!
             short* ofs_x;
             //!

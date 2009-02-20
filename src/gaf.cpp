@@ -29,8 +29,8 @@
 #include "ta3dbase.h"
 #include "gaf.h"
 #include <vector>
-#include "jpeg/ta3d_jpg.h"
 #include "gfx/glfunc.h"
+#include <zlib.h>
 
 
 namespace TA3D
@@ -89,7 +89,7 @@ namespace TA3D
                 return;
             }
 
-            set_palette(pal);      // Activate the palette
+//            set_palette(pal);      // Activate the palette
 
             sint32 nb_img = RawDataImageCount(data, idx);
             if (nb_img <= 0)
@@ -110,7 +110,7 @@ namespace TA3D
 
                 if (!(*i))
                 {
-                    BITMAP* img = Gaf::RawDataToBitmap(data, idx, indx, NULL, NULL, truecolor);
+                    SDL_Surface* img = Gaf::RawDataToBitmap(data, idx, indx, NULL, NULL, truecolor);
 
                     if (!img)
                     {
@@ -123,20 +123,16 @@ namespace TA3D
 
                     bool with_alpha = false;
                     for (int y = 0; y < img->h && !with_alpha; ++y)
-                    {
                         for (int x = 0; x < img->w && !with_alpha; ++x)
-                            with_alpha |= img->line[y][(x << 2) + 3] != 255;
-                    }
+                            with_alpha |= geta( SurfaceInt(img, x, y) ) != 255;
                     if (g_useTextureCompression && lp_CONFIG->use_texture_compression)
-                        allegro_gl_set_texture_format(with_alpha ? GL_COMPRESSED_RGBA_ARB : GL_COMPRESSED_RGB_ARB);
+                        gfx->set_texture_format(with_alpha ? GL_COMPRESSED_RGBA_ARB : GL_COMPRESSED_RGB_ARB);
                     else
-                        allegro_gl_set_texture_format(with_alpha ? GL_RGBA8 : GL_RGB8);
+                        gfx->set_texture_format(with_alpha ? GL_RGBA8 : GL_RGB8);
 
-                    allegro_gl_use_alpha_channel(with_alpha);
                     *i = gfx->make_texture(img,filter);
-                    allegro_gl_use_alpha_channel(false);
                     gfx->save_texture_to_cache(cache_filename, *i, img->w, img->h);
-                    destroy_bitmap(img);
+                    SDL_FreeSurface(img);
                 }
                 else
                 {
@@ -171,8 +167,7 @@ namespace TA3D
             sint32 idx = RawDataGetEntryIndex(data, imgname);
             if (idx != -1)
             {
-                set_palette(pal); // Activate the palette
-                BITMAP *img = Gaf::RawDataToBitmap(data, idx, 0, NULL, NULL, truecolor);
+                SDL_Surface *img = Gaf::RawDataToBitmap(data, idx, 0, NULL, NULL, truecolor);
                 if (img)
                 {
                     if (w) *w = img->w;
@@ -182,19 +177,17 @@ namespace TA3D
                     for (int y = 0; y < img->h && !with_alpha; ++y)
                     {
                         for (int x = 0; x < img->w && !with_alpha; ++x)
-                            with_alpha |= img->line[y][(x << 2) + 3] != 255;
+                            with_alpha |= SurfaceByte(img, (x << 2) + 3, y) != 255;
                     }
                     if (g_useTextureCompression && lp_CONFIG->use_texture_compression)
-                        allegro_gl_set_texture_format(with_alpha ? GL_COMPRESSED_RGBA_ARB : GL_COMPRESSED_RGB_ARB);
+                        gfx->set_texture_format(with_alpha ? GL_COMPRESSED_RGBA_ARB : GL_COMPRESSED_RGB_ARB);
                     else
-                        allegro_gl_set_texture_format(with_alpha ? GL_RGBA8 : GL_RGB8);
+                        gfx->set_texture_format(with_alpha ? GL_RGBA8 : GL_RGB8);
 
-                    allegro_gl_use_alpha_channel(with_alpha);
                     GLuint gl_img = gfx->make_texture(img,filter);
-                    allegro_gl_use_alpha_channel(false);
                     gfx->save_texture_to_cache(cache_filename, gl_img, img->w, img->h);
 
-                    destroy_bitmap(img);
+                    SDL_FreeSurface(img);
                     delete[] data;
                     return gl_img;
                 }
@@ -279,7 +272,7 @@ namespace TA3D
 
 
 
-    BITMAP* Gaf::RawDataToBitmap(const byte* buf, const sint32 entry_idx, const sint32 img_idx, short* ofs_x, short* ofs_y, const bool truecolor)
+    SDL_Surface* Gaf::RawDataToBitmap(const byte* buf, const sint32 entry_idx, const sint32 img_idx, short* ofs_x, short* ofs_y, const bool truecolor)
     {
         LOG_ASSERT(buf != NULL);
         if (entry_idx < 0)
@@ -327,7 +320,7 @@ namespace TA3D
         sint32 frame_w = framedata.Width;
         sint32 frame_h = framedata.Height;
 
-        BITMAP *frame_img = NULL;
+        SDL_Surface *frame_img = NULL;
 
         if (header.IDVersion == TA3D_GAF_TRUECOLOR)
         {
@@ -336,40 +329,10 @@ namespace TA3D
             img_size = *((sint32*)(buf+f_pos));
             f_pos += 4;
 
-            set_color_depth(32);
-            frame_img = load_memory_jpg(buf + f_pos, img_size, NULL);
+            frame_img = gfx->create_surface_ex( framedata.Transparency ? 32 : 24, framedata.Width, framedata.Height );
+            uLongf len = frame_img->w * frame_img->h * frame_img->format->BytesPerPixel;
+            uncompress ( (Bytef*) frame_img->pixels, &len, (Bytef*) buf + f_pos, img_size);
             f_pos += img_size;
-
-            if (framedata.Transparency != 0 && frame_img != NULL) // Read alpha channel
-            {
-                img_size = *((sint32*)(buf+f_pos));
-                f_pos += 4;
-                BITMAP* img_alpha = load_memory_jpg(buf + f_pos, img_size, NULL);
-                f_pos += img_size;
-                if (img_alpha)
-                {
-                    if (bitmap_color_depth(frame_img) != 32)
-                    {
-                        BITMAP* tmp = create_bitmap_ex(32, frame_img->w, frame_img->h);
-                        blit(frame_img, tmp, 0, 0, 0, 0, frame_img->w, frame_img->h);
-                        destroy_bitmap(frame_img);
-                        frame_img = tmp;
-                    }
-                    for (int y = 0; y < frame_img->h; ++y)
-                    {
-                        for (int x = 0; x < frame_img->w; ++x)
-                        {
-                            int c = getpixel(frame_img, x, y);
-                            putpixel( frame_img, x, y, makeacol( getr(c), getg(c), getb(c), img_alpha->line[y][x<<2] ) );
-                        }
-                    }
-                    destroy_bitmap(img_alpha);
-                }
-            }
-            else
-                for (int y = 0; y < frame_img->h; ++y)
-                    for (int x = 0; x < frame_img->w; ++x)
-                        putpixel( frame_img, x, y, getpixel(frame_img, x, y) | makeacol(0,0,0,0xFF) );
         }
         else
         {
@@ -392,7 +355,7 @@ namespace TA3D
                     framedata.Unknown3      = *((sint32*)(buf+f_pos));	f_pos += 4;
                 }
 
-                BITMAP *img = NULL;
+                SDL_Surface *img = NULL;
 
                 if (framedata.Compressed) // Si l'image est comprimée
                 {
@@ -400,13 +363,13 @@ namespace TA3D
                     LOG_ASSERT(framedata.Height >= 0 && framedata.Height < 4096);
                     if (!truecolor)
                     {
-                        img = create_bitmap_ex(8, framedata.Width, framedata.Height);
-                        clear(img);
+                        img = gfx->create_surface_ex(8, framedata.Width, framedata.Height);
+                        SDL_FillRect(img, NULL, 0);
                     }
                     else
                     {
-                        img = create_bitmap_ex(32, framedata.Width, framedata.Height);
-                        clear_to_color(img, 0);
+                        img = gfx->create_surface_ex(32, framedata.Width, framedata.Height);
+                        SDL_FillRect(img, NULL, 0);
                     }
 
                     sint16 length;
@@ -443,9 +406,12 @@ namespace TA3D
                                     while (l > 0)
                                     {
                                         if (!truecolor)
-                                            img->line[i][x++] = buf[f_pos];
+                                        {
+                                            SurfaceByte(img, x, i) = buf[f_pos];
+                                            x++;
+                                        }
                                         else
-                                            putpixel(img,x++,i,makeacol(pal[buf[f_pos]].r<<2,pal[buf[f_pos]].g<<2,pal[buf[f_pos]].b<<2,0xFF));
+                                            putpixel(img,x++,i,makeacol(pal[buf[f_pos]].r, pal[buf[f_pos]].g, pal[buf[f_pos]].b,0xFF));
                                         --l;
                                     }
                                     ++f_pos;
@@ -459,11 +425,14 @@ namespace TA3D
                                         if (truecolor)
                                         {
                                             putpixel(img, x++, i,
-                                                     makeacol(pal[buf[f_pos]].r << 2, pal[buf[f_pos]].g << 2, pal[buf[f_pos]].b << 2, 0xFF));
+                                                     makeacol(pal[buf[f_pos]].r, pal[buf[f_pos]].g, pal[buf[f_pos]].b, 0xFF));
                                             ++f_pos;
                                         }
                                         else
-                                            img->line[i][x++]=buf[f_pos++];
+                                        {
+                                            SurfaceByte(img, x, i) = buf[f_pos++];
+                                            x++;
+                                        }
                                         ++e;
                                         --l;
                                     }
@@ -476,31 +445,32 @@ namespace TA3D
                 else
                 {
                     // Si l'image n'est pas comprimée
-                    img = create_bitmap_ex(8, framedata.Width, framedata.Height);
-                    clear(img);
+                    img = gfx->create_surface_ex(8, framedata.Width, framedata.Height);
+                    SDL_FillRect(img, NULL, 0);
 
                     f_pos = framedata.PtrFrameData;
+                    SDL_LockSurface(img);
                     for (int i = 0; i < img->h; ++i) // Copie les octets de l'image
                     {
-                        memcpy(img->line[i], buf + f_pos, img->w);
+                        memcpy(((char*)(img->pixels)) + i * img->pitch, buf + f_pos, img->w);
                         f_pos += img->w;
                     }
+                    SDL_UnlockSurface(img);
 
                     if (truecolor)
                     {
-                        BITMAP* tmp = create_bitmap_ex(32, framedata.Width, framedata.Height);
-                        blit(img, tmp, 0, 0, 0, 0, img->w, img->h);
+                        SDL_Surface *tmp = convert_format_copy(img);
                         for (int y = 0 ; y < tmp->h; ++y)
                         {
                             for (int x = 0; x < tmp->w; ++x)
                             {
-                                if (img->line[y][x] == framedata.Transparency)
-                                    ((uint32*)(tmp->line[y]))[x] = 0x00000000;
+                                if (SurfaceByte(img, x, y) == framedata.Transparency)
+                                    SurfaceInt(tmp, x, y) = 0x00000000;
                                 else
-                                    ((uint32*)(tmp->line[y]))[x] |= makeacol(0,0,0, 0xFF);
+                                    SurfaceInt(tmp, x, y) |= makeacol(0,0,0, 0xFF);
                             }
                         }
-                        destroy_bitmap(img);
+                        SDL_FreeSurface(img);
                         img = tmp;
                     }
                 }
@@ -513,15 +483,15 @@ namespace TA3D
                     {
                         if (!truecolor)
                         {
-                            frame_img = create_bitmap_ex(8,frame_w,frame_h);
-                            clear(frame_img);
+                            frame_img = gfx->create_surface_ex(8,frame_w,frame_h);
+                            SDL_FillRect(frame_img, NULL, 0);
                         }
                         else
                         {
-                            frame_img = create_bitmap_ex(32,frame_w,frame_h);
-                            clear_to_color(frame_img,0);
+                            frame_img = gfx->create_surface_ex(32,frame_w,frame_h);
+                            SDL_FillRect(frame_img, NULL, 0);
                         }
-                        draw_sprite( frame_img, img, frame_x - framedata.XPos, frame_y - framedata.YPos );
+                        blit(img, frame_img, 0, 0, frame_x - framedata.XPos, frame_y - framedata.YPos, img->w, img->h);
                     }
                     else
                     {
@@ -537,22 +507,23 @@ namespace TA3D
                                 {
                                     if (X >= 0 && X < frame_img->w)
                                     {
-                                        int r = frame_img->line[Y][(X << 2)];
-                                        int g = frame_img->line[Y][(X << 2) + 1];
-                                        int b = frame_img->line[Y][(X << 2) + 2];
+                                        uint32 c = SurfaceInt(frame_img, X, Y);
+                                        int r = getr(c);
+                                        int g = getg(c);
+                                        int b = getb(c);
+                                        int a = geta(c);
 
-                                        int r2 = img->line[y][(x << 2)];
-                                        int g2 = img->line[y][(x << 2) + 1];
-                                        int b2 = img->line[y][(x << 2) + 2];
-                                        int a2 = img->line[y][(x << 2) + 3];
+                                        c = SurfaceInt(img, x, y);
+                                        int r2 = getr(c);
+                                        int g2 = getg(c);
+                                        int b2 = getb(c);
+                                        int a2 = geta(c);
 
                                         r = (r * (255 - a2) + r2 * a2) >> 8;
                                         g = (g * (255 - g2) + g2 * a2) >> 8;
                                         b = (b * (255 - b2) + b2 * a2) >> 8;
 
-                                        frame_img->line[Y][(X << 2)] = r;
-                                        frame_img->line[Y][(X << 2) + 1] = g;
-                                        frame_img->line[Y][(X << 2) + 2] = b;
+                                        SurfaceInt(frame_img, X, Y) = makeacol(r, g, b, a);
                                     }
                                     ++X;
                                 }
@@ -561,7 +532,7 @@ namespace TA3D
                         else
                             masked_blit(img, frame_img, 0, 0, frame_x - framedata.XPos, frame_y - framedata.YPos, img->w, img->h );
                     }
-                    destroy_bitmap(img);
+                    SDL_FreeSurface(img);
                 }
             }
         }
@@ -582,7 +553,7 @@ namespace TA3D
 
         nb_bmp = Gaf::RawDataImageCount(buf,entry_idx);
 
-        bmp   = new BITMAP*[nb_bmp];
+        bmp   = new SDL_Surface*[nb_bmp];
         glbmp = new GLuint[nb_bmp];
         ofs_x = new short[nb_bmp];
         ofs_y = new short[nb_bmp];
@@ -600,12 +571,7 @@ namespace TA3D
                 w[i-f] = bmp[i-f]->w;
                 h[i-f] = bmp[i-f]->h;
                 if (!truecolor)
-                {
-                    BITMAP* tmp = create_bitmap(w[i-f], h[i-f]);
-                    blit(bmp[i-f], tmp, 0,0,0,0, tmp->w, tmp->h);
-                    destroy_bitmap(bmp[i-f]);
-                    bmp[i-f] = tmp;
-                }
+                    bmp[i-f] = convert_format(bmp[i-f]);
             }
             else
                 ++f;
@@ -637,7 +603,7 @@ namespace TA3D
             for (int i = 0; i < nb_bmp; ++i)
             {
                 if (bmp[i])
-                    destroy_bitmap(bmp[i]);
+                    SDL_FreeSurface(bmp[i]);
                 if (pAnimationConverted)
                     gfx->destroy_texture(glbmp[i]);
             }
@@ -656,7 +622,7 @@ namespace TA3D
         for (int i = 0; i < nb_bmp; ++i) // Fait un peu le ménage
         {
             if (bmp[i])
-                destroy_bitmap(bmp[i]);
+                SDL_FreeSurface(bmp[i]);
             bmp[i] = NULL;
         }
         name.clear();
@@ -680,18 +646,12 @@ namespace TA3D
 
             if (!glbmp[i])
             {
-                set_color_depth(32);
-                BITMAP *tmp = create_bitmap(bmp[i]->w,bmp[i]->h);
-                blit(bmp[i], tmp, 0,0,0,0, tmp->w,tmp->h);
-                destroy_bitmap(bmp[i]);
-                bmp[i] = tmp;
+                bmp[i] = convert_format(bmp[i]);
                 if (g_useTextureCompression && COMPRESSED && lp_CONFIG->use_texture_compression)
-                    allegro_gl_set_texture_format(GL_COMPRESSED_RGBA_ARB);
+                    gfx->set_texture_format(GL_COMPRESSED_RGBA_ARB);
                 else
-                    allegro_gl_set_texture_format(GL_RGBA8);
-                allegro_gl_use_alpha_channel(true);
+                    gfx->set_texture_format(GL_RGBA8);
                 glbmp[i] = gfx->make_texture(bmp[i], NO_FILTER ? FILTER_NONE : FILTER_TRILINEAR );
-                allegro_gl_use_alpha_channel(false);
                 if (!filename.empty())
                     gfx->save_texture_to_cache(cache_filename, glbmp[i], bmp[i]->w, bmp[i]->h);
             }

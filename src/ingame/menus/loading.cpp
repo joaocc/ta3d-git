@@ -17,7 +17,7 @@ namespace Menus
         :pNbTasksCompleted(0.0f), pMaxTasksCompleted(100.0f),
         pPercent(0.0f), pLastPercent(-1.0f), pBroadcastInformations(true),
         pCaption("Loading..."),
-        pBackgroundTexture(0), pPreviousFontSize(1.0f), pCurrentFontHeight(0.0f)
+        pBackgroundTexture(0), pCurrentFontHeight(0.0f)
     {
         LOG_DEBUG(LOG_PREFIX_MENU_LOADING << "Starting...");
         pStartTime = msec_timer;
@@ -30,7 +30,7 @@ namespace Menus
         :pNbTasksCompleted(0.0f), pMaxTasksCompleted(maxTasks),
         pPercent(0.0f), pLastPercent(-1.0f), pBroadcastInformations(true),
         pCaption("Loading..."),
-        pBackgroundTexture(0), pPreviousFontSize(1.0f), pCurrentFontHeight(0.0f)
+        pBackgroundTexture(0), pCurrentFontHeight(0.0f)
     {
         LOG_DEBUG(LOG_PREFIX_MENU_LOADING << "Starting...");
         pStartTime = msec_timer;
@@ -54,17 +54,12 @@ namespace Menus
         LOG_ASSERT(NULL != gfx);
 
         gfx->set_2D_mode();
-        glScalef(SCREEN_W / 1280.0f, SCREEN_H / 1024.0f, 1.0f);
 
-        pPreviousFontSize = gfx->TA_font.get_size();
-        gfx->TA_font.change_size(1.75f);
-        pCurrentFontHeight = gfx->TA_font.height();
+        pCurrentFontHeight = gui_font->height();
     }
 
     void Loading::finalizeDrawing()
     {
-        // Restore the previous font size
-        gfx->TA_font.change_size(pPreviousFontSize);
         // Reset 3D mode
         gfx->unset_2D_mode();
     }
@@ -153,7 +148,7 @@ namespace Menus
     bool Loading::broadcastInfosAboutLoading()
     {
         MutexLocker locker(pMutex);
-        return pBroadcastInformations; 
+        return pBroadcastInformations;
     }
 
 
@@ -200,38 +195,39 @@ namespace Menus
         // Clear the screen
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         // Draw the texture
-        gfx->drawtexture(pBackgroundTexture, 0.0f, 0.0f, 1280.0f, 1024.0f);
+        gfx->drawtexture(pBackgroundTexture, 0.0f, 0.0f, SCREEN_W, SCREEN_H);
+
+        float fw = SCREEN_W / 1280.0f;
+        float fh = SCREEN_H / 1024.0f;
 
         // Draw all previous messages
         int indx(0);
         for (String::List::const_iterator i = pMessages.begin() ; i != pMessages.end() ; ++i, ++indx)
-        {
-            gfx->print(gfx->TA_font, 105.0f, 175.0f + pCurrentFontHeight * indx, 0.0f, 0xFFFFFFFF, *i);
-        }
+            gfx->print(gui_font, 105.0f * fw, 175.0f * fh + pCurrentFontHeight * indx, 0.0f, 0xFFFFFFFF, *i);
 
         // Draw the progress bar
         glDisable(GL_BLEND);
         glDisable(GL_TEXTURE_2D);
         glColor3f(0.5f, 0.8f, 0.3f);
         glBegin(GL_QUADS);
-        glVertex2f(100.0f, 858.0f);
-        glVertex2f(100.0f + 10.72f * pPercent, 858.0f);
-        glVertex2f(100.0f + 10.72f * pPercent, 917.0f);
-        glVertex2f(100.0f, 917.0f);
+        glVertex2f(100.0f * fw, 858.0f * fh);
+        glVertex2f((100.0f + 10.72f * pPercent) * fw, 858.0f * fh);
+        glVertex2f((100.0f + 10.72f * pPercent) * fw, 917.0f * fh);
+        glVertex2f(100.0f * fw, 917.0f * fh);
         glEnd();
 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-        glColor4f(1.0f,1.0f,1.0f,1.0f);
-        gfx->drawtexture(pBackgroundTexture, 100.0f, 856.0f, 1172.0f, 917.0f,
+        glColor4ub(0xFF,0xFF,0xFF,0xFF);
+        gfx->drawtexture(pBackgroundTexture, 100.0f * fw, 856.0f * fh, 1172.0f * fw, 917.0f * fh,
                          100.0f / 1280.0f, 862.0f / 1024.0f, 1172.0f / 1280.0f, 917.0f / 1024.0f);
         glDisable(GL_BLEND);
 
         // Draw the caption (horizontally centered)
         glEnable(GL_TEXTURE_2D);
         glEnable(GL_BLEND);
-        gfx->print(gfx->TA_font, 640.0f - 0.5f * gfx->TA_font.length(pCaption),
-                   830 - pCurrentFontHeight * 0.5f, 0.0f, 0xFFFFFFFF,
+        gfx->print(gfx->TA_font, 640.0f * fw - 0.5f * gfx->TA_font->length(pCaption),
+                   830 * fh - pCurrentFontHeight * 0.5f, 0.0f, 0xFFFFFFFF,
                    pCaption);
         glDisable(GL_BLEND);
 
